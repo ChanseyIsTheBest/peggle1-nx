@@ -289,3 +289,21 @@ Only the optimised-codegen NRO is delivered (the user's rule for every port). Pe
 - **Ryujinx only**: two runs died in libnx `mutexLock` on the SDK's global lock, from the audio worker's
   `XAudioSubmitRenderDriverFrame` ("invalid memory region" in Ryujinx's memory tracking); the console never showed it
   (the user: "I don't get crashes on console").
+
+## 1.0.1: the crash at the end of a level (2026-10-21)
+
+- **A player's crashes** (three in their `rex_crash.log`, the same each time, 1.0.0 release build `84ef7458`): a memory
+  access fault in `sub_822B0E48` reading guest 0x43FA000C (unmapped), on the main thread, from the leaderboard
+  manager (`sub_822B36F8` -> `sub_822B21C8` -> `sub_822B0E48`).
+- **Why:** when a level ends, `sub_822B9D88` queues the score's leaderboard writes (ids 1, 109, the level's, 112,
+  5 / 111). Each request first reads the player's previous result with `XUserReadStats` (XMsg 0xFB / 0x000B0021) into
+  a freshly allocated buffer, and the write step (`sub_822B0E48`) uses that buffer once the read is no longer pending,
+  without looking at its result: `dwNumViews >= 1` -> `pViews->pRows->i64Rating`. The SDK's `XUserReadStats` returned
+  success and wrote nothing, so the game read heap garbage as the results: a count of 1 or more sent it to an unmapped
+  page.
+- **Fix** (`sdk/src/kernel/xam/apps/xgi_app.cpp`): `XUserReadStats` zeroes the results header (no views: every reader
+  in the game checks the count first) and fails, as for a profile not signed in to Xbox Live. The message is dispatched
+  synchronously, so the header is written before the overlapped completes. `XamUserCreateStatsEnumerator`
+  (`xam_user.cpp`) was a stub that "returned" its first argument (title id 0: success) with the handle and buffer size
+  unwritten; it now zeroes both and fails (`sub_822B02D8`, `sub_822B0500` stop on failure).
+- 1.0.1: version 1.0.1, the same release settings; NRO SHA-256 `2eb617f6...80f7`, ELF build id `891fac27...`.

@@ -572,7 +572,7 @@ if(REXGLUE_PLATFORM_SWITCH)
     # tools/switch_hot_functions.py and the console profiler's samples. It must come from the same build as the NRO.
     target_link_options(peggle1 PRIVATE "LINKER:-Map=${CMAKE_BINARY_DIR}/peggle1.map")
     # The homebrew menu's entry: name, author, version and icon (app/icon.jpg, 256x256 JPEG).
-    set(PEGGLE1_VERSION "1.0.0" CACHE STRING "NRO display version" FORCE)
+    set(PEGGLE1_VERSION "1.0.1" CACHE STRING "NRO display version" FORCE)
     # peggle1-nx (2026-10-21): app/icon.jpg is the game's own icon (the user's 512x512 picture of it, 256x256 on black), the
     # one piece of the game's art in the repository (the user's exception for the icon).
     set(_peggle1_icon "")

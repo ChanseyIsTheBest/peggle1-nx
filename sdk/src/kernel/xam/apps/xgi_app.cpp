@@ -9,6 +9,8 @@
  * @modified    Tom Clay, 2026 - Adapted for ReXGlue runtime
  */
 
+#include <atomic>
+
 #include <rex/kernel/xam/apps/xgi_app.h>
 #include <rex/logging.h>
 #include <rex/thread.h>
@@ -330,7 +332,21 @@ X_HRESULT XgiApp::DispatchMessageSync(uint32_t message, uint32_t buffer_ptr,
       REXKRNL_DEBUG("XUserReadStats({}, {}, {:08X}, {}, {:08X}, {}, {:08X})", title_id, xuids_count,
                     xuids_ptr, specs_count, specs_ptr, results_size, results_ptr);
 
-      return X_E_SUCCESS;
+      // peggle1-nx (2026-10-21): there are no leaderboards without Xbox Live, so the read fails, as it does for a
+      // profile that is not signed in to Live. Before, it succeeded without writing the results: Peggle read its
+      // freshly allocated buffer as XUSER_STATS_READ_RESULTS (dwNumViews, pViews) and, when the heap left a count of
+      // 1 or more there, followed pViews into unmapped memory (sub_822B0E48 reading pViews->pRows; a player's three
+      // crashes, guest address 0x43FA000C). The header is zeroed too (no views), for a caller that ignores the error.
+      if (results_ptr && results_size >= 8 && memory_->LookupHeap(results_ptr)) {
+        auto* results = memory_->TranslateVirtual(results_ptr);
+        memory::store_and_swap<uint32_t>(results + 0, 0);  // dwNumViews
+        memory::store_and_swap<uint32_t>(results + 4, 0);  // pViews
+      }
+      static std::atomic<bool> logged{false};
+      if (!logged.exchange(true)) {
+        REXKRNL_INFO("XUserReadStats: no leaderboards without Xbox Live; the read fails (logged once)");
+      }
+      return X_E_FAIL;
     }
     case 0x000B0025: {
       assert_true(!buffer_length || buffer_length == 20);

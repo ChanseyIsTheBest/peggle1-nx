@@ -677,6 +677,27 @@ class XStaticAchievementEnumerator : public XEnumerator {
   size_t current_item_ = 0;
 };
 
+// peggle1-nx (2026-10-21): the leaderboard enumerators (XUserCreateStatsEnumeratorByRank / ByXuid / ByRating) fail, as
+// for a profile not signed in to Xbox Live: there are no leaderboards without it. A stub "returned" its first argument
+// (the title id, 0 for the running title: success) and left the handle and the buffer size unwritten, so Peggle
+// allocated a buffer of whatever size its stack held and enumerated a handle that was never made.
+u32 XamUserCreateStatsEnumerator_entry(u32 title_id, u32 type, u64 pivot, u32 num_rows, u32 num_specs, u32 specs_ptr,
+                                       mapped_u32 buffer_size_ptr, mapped_u32 handle_ptr) {
+  (void)title_id;
+  (void)type;
+  (void)pivot;
+  (void)num_rows;
+  (void)num_specs;
+  (void)specs_ptr;
+  if (buffer_size_ptr) {
+    *buffer_size_ptr = 0;
+  }
+  if (handle_ptr) {
+    *handle_ptr = 0;
+  }
+  return X_ERROR_FUNCTION_FAILED;
+}
+
 u32 XamUserCreateAchievementEnumerator_entry(u32 title_id, u32 user_index, u32 xuid, u32 flags,
                                              u32 offset, u32 count, mapped_u32 buffer_size_ptr,
                                              mapped_u32 handle_ptr) {
@@ -843,7 +864,7 @@ REX_EXPORT_STUB(__imp__XamUserAddRecentPlayer);
 REX_EXPORT_STUB(__imp__XamUserAllowedToPostToSocialNetwork);
 REX_EXPORT_STUB(__imp__XamUserCreateAvatarAssetEnumerator);
 REX_EXPORT_STUB(__imp__XamUserCreatePlayerEnumerator);
-REX_EXPORT_STUB(__imp__XamUserCreateStatsEnumerator);
+REX_EXPORT(__imp__XamUserCreateStatsEnumerator, rex::kernel::xam::XamUserCreateStatsEnumerator_entry)
 REX_EXPORT_STUB(__imp__XamUserCreateTitlesPlayedEnumerator);
 REX_EXPORT_STUB(__imp__XamUserFlushLogonQueue);
 REX_EXPORT_STUB(__imp__XamUserGetAge);
