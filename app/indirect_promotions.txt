@@ -1,0 +1,5 @@
+# Indirect call sites that go to one target: tools/indirect_calls.py --promote turns each into a guarded
+# direct call. Written by tools/indirect_promotions.py from a PC census (peggle1_diag_indirect_census); the
+# guard compares the target, so the list only has to be good, not complete.
+# peggle1-nx (2026-10-21): empty until a census of Peggle 1 (Peggle 2's 182 sites name its own code).
+# <function> <site> <target> [<target2> [<target3>]]   # calls in the census, share the guards catch

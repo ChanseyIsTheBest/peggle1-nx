@@ -1,0 +1,27 @@
+# ReXGlue recompilation manifest for Peggle (Xbox Live Arcade, title 58410889, default.xex + Title Update #3).
+#
+# Run tools/codegen.ps1 (Windows): it calls `rexglue codegen peggle1_manifest.toml` and the post-codegen steps. The
+# project name sets the prefix of everything generated: generated/default/peggle1_{init,pch,funcs}.h,
+# peggle1_recomp.N.cpp, and the CMake target peggle1_recomp built by CMakeLists.txt.
+#
+# default.xex: image base 0x82000000, entry point 0x823D81C0, image size 0x011D0000, XDK 2.0.7776, original PE name
+# Thunderball.exe, version 0.0.1.2. Title Update #3 (default.xexp, next to it: the loader applies it by itself, in
+# the generator and in the game alike) patches it to version 0.0.4.2, image size 0x01390000. It imports only xam.xex
+# and xboxkrnl.exe; the game has no other code module (tools/xex_info.py, docs/plan.md).
+
+[project]
+name = "peggle1"
+sdk_version = "0.10.0"
+# Your own game files: the extracted XBLA package (assets/game_root, made by tools/stfs_extract.py), with default.xex
+# and the title update's default.xexp at its root. Nothing from the game is distributed with this project.
+game_root = "../assets/game_root"
+
+[entrypoint]
+file_path = "../assets/game_root/default.xex"
+out_directory_path = "generated/default"
+
+# The includes are processed before this table, so whatever is set here overrides what is included.
+#   overrides.toml       written by hand: code the automatic function discovery misses, each with its evidence
+#   perf_overrides.toml  code generation options for speed (registers as C++ locals, ...), turned on once the game
+#                        ran; the same generated code serves the PC and the Switch builds.
+includes = ["overrides.toml", "perf_overrides.toml"]

@@ -1,0 +1,8 @@
+# The base peggle1.toml of tools/win/p1_emu_run.sh's emulator runs (on top of the NRO's built-in settings).
+log_level = "info"
+log_to_file = true
+license_mask = 1
+peggle1_renderer = "renut"
+renut_gpu_backend = "deko3d"
+peggle1_shots_every_s = 5
+audio_mute = true

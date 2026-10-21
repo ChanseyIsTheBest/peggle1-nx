@@ -1,0 +1,772 @@
+# Peggle-specific analysis corrections for the code generator.
+#
+# Every entry needs its evidence (which tool or which log found it). The tools that produce candidates:
+#   tools/find_gaps.py, tools/gap_fixpoint.py   code the automatic discovery left without a function
+#   tools/pointer_fixpoint.py                   code pointers stored in data (vtables, callback tables, CRT tables)
+#   tools/switch_check.py                       jump tables the generator bounded wrongly
+#   tools/runtime_gap_resolver.py               "Call to invalid or unregistered function" from a game log
+
+# The CRT's setjmp/longjmp (root keys: they must stay outside any table). Found by shape (2026-10-21, an image scan for
+# `stfd f14,0(r3); stfd f15,8(r3)` and `lfd f14,0(r7)`; tools/ppc_dis.py, tools/callers.py), the XDK CRT's as in
+# Peggle 2 (and in Guwange, the Mushihimesama session's reminder):
+#   setjmp  0x827A4B50: a hook word at 0x830A3920 is tried first (bnectr), mflr, mfcr, stfd f14-f31 at 0(r3)...;
+#           8 call sites
+#   longjmp 0x827A33E0: mflr, stwu, the check of +312, mr r7,r3, lfd f14-f31 from 0(r7)...; 4 call sites
+# The image carries PopCap's image libraries (libpng / libjpeg error paths longjmp back); with the addresses the
+# generator emits host setjmp/longjmp keyed by the guest jmp_buf.
+setjmp_address = 0x827A4B50
+longjmp_address = 0x827A33E0
+
+[functions]
+# First codegen (2026-10-21): 189 "target not in any function", all reached by `b` (tail calls), 149 targets.
+#
+# 146 of them are the linker's jump stubs (`lis r11,hi; addi r11,r11,lo; mtctr r11; bctr`, 16 bytes each).
+# The image holds 13 identical tables of 13,011 stubs, one in .xidata and the others in .text and the 9 .embsec_
+# sections. The generator makes functions of stubs reached by `bl`, but not of those reached only by `b`
+# (tools/jump_stubs.py --targets out/unresolved_targets.txt --toml: every target a stub start; comment = where it
+# jumps).
+"0x82140B90" = { size = 0x10 }  # stub -> 0x822362B8
+"0x821415F0" = { size = 0x10 }  # stub -> 0x82268A00
+"0x82141830" = { size = 0x10 }  # stub -> 0x822E3A00
+"0x82142C60" = { size = 0x10 }  # stub -> 0x824013D0
+"0x82142E00" = { size = 0x10 }  # stub -> 0x82206FA0
+"0x82143060" = { size = 0x10 }  # stub -> 0x822190C0
+"0x82143B10" = { size = 0x10 }  # stub -> 0x8222AD80
+"0x821442E0" = { size = 0x10 }  # stub -> 0x8228CA10
+"0x82144390" = { size = 0x10 }  # stub -> 0x8228D210
+"0x82144620" = { size = 0x10 }  # stub -> 0x8228DB40
+"0x82144A40" = { size = 0x10 }  # stub -> 0x822E35D8
+"0x82144C40" = { size = 0x10 }  # stub -> 0x8228DDD0
+"0x82144F70" = { size = 0x10 }  # stub -> 0x822884B8
+"0x82145270" = { size = 0x10 }  # stub -> 0x822187B0
+"0x82145620" = { size = 0x10 }  # stub -> 0x823BD908
+"0x82145B40" = { size = 0x10 }  # stub -> 0x82212298
+"0x82146AB0" = { size = 0x10 }  # stub -> 0x82213AB0
+"0x82147260" = { size = 0x10 }  # stub -> 0x822B2218
+"0x82147550" = { size = 0x10 }  # stub -> 0x82287980
+"0x82148840" = { size = 0x10 }  # stub -> 0x8220BD10
+"0x82148860" = { size = 0x10 }  # stub -> 0x8221C048
+"0x821489C0" = { size = 0x10 }  # stub -> 0x82409230
+"0x82148CE0" = { size = 0x10 }  # stub -> 0x822E33B8
+"0x82148F10" = { size = 0x10 }  # stub -> 0x82409280
+"0x821493E0" = { size = 0x10 }  # stub -> 0x822E5718
+"0x82149440" = { size = 0x10 }  # stub -> 0x82212A68
+"0x821497D0" = { size = 0x10 }  # stub -> 0x82292368
+"0x82149D00" = { size = 0x10 }  # stub -> 0x822875E0
+"0x8214AF60" = { size = 0x10 }  # stub -> 0x8222DCF8
+"0x8214B580" = { size = 0x10 }  # stub -> 0x82289D18
+"0x8214BD70" = { size = 0x10 }  # stub -> 0x821FED08
+"0x8214C010" = { size = 0x10 }  # stub -> 0x822FE130
+"0x8214C280" = { size = 0x10 }  # stub -> 0x82211250
+"0x8214C660" = { size = 0x10 }  # stub -> 0x82288118
+"0x8214C670" = { size = 0x10 }  # stub -> 0x822896A8
+"0x8214E790" = { size = 0x10 }  # stub -> 0x8224C0D8
+"0x8214E9C0" = { size = 0x10 }  # stub -> 0x82289FD0
+"0x8214EAA0" = { size = 0x10 }  # stub -> 0x82218E50
+"0x8214EDA0" = { size = 0x10 }  # stub -> 0x822876C8
+"0x8214FEA0" = { size = 0x10 }  # stub -> 0x8228C158
+"0x82150880" = { size = 0x10 }  # stub -> 0x8228E8B8
+"0x821509F0" = { size = 0x10 }  # stub -> 0x8228CC68
+"0x82150F80" = { size = 0x10 }  # stub -> 0x82206DE0
+"0x821511C0" = { size = 0x10 }  # stub -> 0x8220B7F0
+"0x821512C0" = { size = 0x10 }  # stub -> 0x82217640
+"0x82151360" = { size = 0x10 }  # stub -> 0x8222DA70
+"0x82151750" = { size = 0x10 }  # stub -> 0x82400E68
+"0x821518B0" = { size = 0x10 }  # stub -> 0x8228B4B8
+"0x82151C70" = { size = 0x10 }  # stub -> 0x8238EA88
+"0x82152190" = { size = 0x10 }  # stub -> 0x82287CF0
+"0x82152C60" = { size = 0x10 }  # stub -> 0x8220AF78
+"0x82152FE0" = { size = 0x10 }  # stub -> 0x82231510
+"0x82153040" = { size = 0x10 }  # stub -> 0x8228CF08
+"0x821533F0" = { size = 0x10 }  # stub -> 0x8228B6E8
+"0x82153C70" = { size = 0x10 }  # stub -> 0x82218540
+"0x82154600" = { size = 0x10 }  # stub -> 0x822E3268
+"0x82154E40" = { size = 0x10 }  # stub -> 0x8228A0E0
+"0x821559E0" = { size = 0x10 }  # stub -> 0x821FF6D8
+"0x82155C10" = { size = 0x10 }  # stub -> 0x8228CFF0
+"0x82155FA0" = { size = 0x10 }  # stub -> 0x821F33F8
+"0x82156540" = { size = 0x10 }  # stub -> 0x8222AB58
+"0x82157070" = { size = 0x10 }  # stub -> 0x82288300
+"0x82158280" = { size = 0x10 }  # stub -> 0x822899D0
+"0x82158600" = { size = 0x10 }  # stub -> 0x82202C48
+"0x82158CD0" = { size = 0x10 }  # stub -> 0x822E3E60
+"0x82159470" = { size = 0x10 }  # stub -> 0x82218418
+"0x82159620" = { size = 0x10 }  # stub -> 0x82200518
+"0x82159880" = { size = 0x10 }  # stub -> 0x8220D880
+"0x82159E10" = { size = 0x10 }  # stub -> 0x82400E88
+"0x8215A670" = { size = 0x10 }  # stub -> 0x821F2ED8
+"0x8215AD60" = { size = 0x10 }  # stub -> 0x822874D8
+"0x8215B430" = { size = 0x10 }  # stub -> 0x822E2DE8
+"0x8215B540" = { size = 0x10 }  # stub -> 0x822B0500
+"0x8215BEE0" = { size = 0x10 }  # stub -> 0x82207618
+"0x8215C180" = { size = 0x10 }  # stub -> 0x8228C508
+"0x8215C350" = { size = 0x10 }  # stub -> 0x82219A80
+"0x8215C460" = { size = 0x10 }  # stub -> 0x824016F8
+"0x8215C870" = { size = 0x10 }  # stub -> 0x82288C98
+"0x8215CC90" = { size = 0x10 }  # stub -> 0x823AE730
+"0x8215DEC0" = { size = 0x10 }  # stub -> 0x82232EB0
+"0x8215E530" = { size = 0x10 }  # stub -> 0x82218BE0
+"0x8215E600" = { size = 0x10 }  # stub -> 0x82287428
+"0x8215E720" = { size = 0x10 }  # stub -> 0x823AD500
+"0x8215E930" = { size = 0x10 }  # stub -> 0x82401F60
+"0x8215ED20" = { size = 0x10 }  # stub -> 0x822E4158
+"0x8215F0A0" = { size = 0x10 }  # stub -> 0x821FE690
+"0x8215F1C0" = { size = 0x10 }  # stub -> 0x82287B80
+"0x8215F470" = { size = 0x10 }  # stub -> 0x8221BB28
+"0x821601E0" = { size = 0x10 }  # stub -> 0x8228BBE0
+"0x82161590" = { size = 0x10 }  # stub -> 0x8221D2F8
+"0x82161AC0" = { size = 0x10 }  # stub -> 0x82325000
+"0x82161FA0" = { size = 0x10 }  # stub -> 0x821A72F0
+"0x821620E0" = { size = 0x10 }  # stub -> 0x823B9B50
+"0x821628D0" = { size = 0x10 }  # stub -> 0x82236558
+"0x82162A70" = { size = 0x10 }  # stub -> 0x82326908
+"0x82162B50" = { size = 0x10 }  # stub -> 0x8228E488
+"0x82163B30" = { size = 0x10 }  # stub -> 0x822195A0
+"0x82163FC0" = { size = 0x10 }  # stub -> 0x821F4810
+"0x82164670" = { size = 0x10 }  # stub -> 0x822134E8
+"0x82164B90" = { size = 0x10 }  # stub -> 0x82289488
+"0x82164C60" = { size = 0x10 }  # stub -> 0x82231C08
+"0x82165290" = { size = 0x10 }  # stub -> 0x82219330
+"0x82165680" = { size = 0x10 }  # stub -> 0x82232B20
+"0x82165AE0" = { size = 0x10 }  # stub -> 0x82289AF8
+"0x821662B0" = { size = 0x10 }  # stub -> 0x822E3078
+"0x82166990" = { size = 0x10 }  # stub -> 0x821F33A8
+"0x82167B30" = { size = 0x10 }  # stub -> 0x823EB328
+"0x82167D00" = { size = 0x10 }  # stub -> 0x82289248
+"0x82167DE0" = { size = 0x10 }  # stub -> 0x8228BE98
+"0x82167E10" = { size = 0x10 }  # stub -> 0x821FFB48
+"0x82168E00" = { size = 0x10 }  # stub -> 0x82209228
+"0x82168F80" = { size = 0x10 }  # stub -> 0x8219FC18
+"0x82169F40" = { size = 0x10 }  # stub -> 0x82404988
+"0x8216A3A0" = { size = 0x10 }  # stub -> 0x8228A1F0
+"0x8216A450" = { size = 0x10 }  # stub -> 0x82202B20
+"0x8216AB90" = { size = 0x10 }  # stub -> 0x8221E788
+"0x8216BC60" = { size = 0x10 }  # stub -> 0x82289EE8
+"0x8216C0F0" = { size = 0x10 }  # stub -> 0x82381B20
+"0x8216C170" = { size = 0x10 }  # stub -> 0x82289390
+"0x8216C380" = { size = 0x10 }  # stub -> 0x822346E0
+"0x8216D6F0" = { size = 0x10 }  # stub -> 0x821D70D0
+"0x8216DAF0" = { size = 0x10 }  # stub -> 0x822E3898
+"0x8216DD10" = { size = 0x10 }  # stub -> 0x822877F8
+"0x8216E6E0" = { size = 0x10 }  # stub -> 0x82404938
+"0x8216E8D0" = { size = 0x10 }  # stub -> 0x82216010
+"0x8216EC90" = { size = 0x10 }  # stub -> 0x82288668
+"0x8216EEE0" = { size = 0x10 }  # stub -> 0x822E3CC0
+"0x8216F530" = { size = 0x10 }  # stub -> 0x82287F60
+"0x8216FA10" = { size = 0x10 }  # stub -> 0x822895C0
+"0x82170350" = { size = 0x10 }  # stub -> 0x82211A20
+"0x821707D0" = { size = 0x10 }  # stub -> 0x82219810
+"0x82170BF0" = { size = 0x10 }  # stub -> 0x82288A00
+"0x82170F60" = { size = 0x10 }  # stub -> 0x8228C620
+"0x82171150" = { size = 0x10 }  # stub -> 0x82218970
+"0x821717C0" = { size = 0x10 }  # stub -> 0x82288F90
+"0x82171C30" = { size = 0x10 }  # stub -> 0x8220CAE8
+"0x82171E00" = { size = 0x10 }  # stub -> 0x8221CBD8
+"0x82172470" = { size = 0x10 }  # stub -> 0x82289150
+"0x82970B7C" = { size = 0x10 }  # stub -> 0x821DACA0
+"0x82B33C6C" = { size = 0x10 }  # stub -> 0x821AF430
+"0x82B76F04" = { size = 0x10 }  # stub -> 0x821AE5A8
+"0x82B818D4" = { size = 0x10 }  # stub -> 0x821988C0
+"0x82B88B24" = { size = 0x10 }  # stub -> 0x8222AB58
+"0x82B90C34" = { size = 0x10 }  # stub -> 0x822E2B40
+"0x82B94584" = { size = 0x10 }  # stub -> 0x821A72F0
+"0x82BA37C4" = { size = 0x10 }  # stub -> 0x821FAC18
+# The other 3 are small functions (tools/ppc_dis.py):
+# - 0x82814090 and 0x82810C28 are this-adjustor thunks (`addi r3,r3,4; b 0x8280AE88`), each next to its twin
+#   (`addi r3,r3,4; b 0x8280AD90`).
+# - 0x827E2A90 is a leaf list insert (stw into +4/+8 of r4, links it after +304 of r3; blr). It follows a function
+#   that ends with `b 0x827E2A30`.
+"0x82814090" = { size = 0x8 }  # from 0x8281447C
+"0x82810C28" = { size = 0x8 }  # from 0x82811A94
+"0x827E2A90" = { size = 0x20 }  # from 0x827EE168
+# Second codegen (2026-10-21): one more stub came up (0x8214EDC0 from 0x82401534). Rather than one at a time, these
+# are every other stub that a `b` or `bc` anywhere in the executable sections reaches. A scan of the image dump finds
+# 569 such stubs, 423 of them not listed above. A stub is a complete function, so an extra entry is harmless.
+"0x821403D0" = { size = 0x10 }  # stub -> 0x823204F0
+"0x821403E0" = { size = 0x10 }  # stub -> 0x822575E8
+"0x82140450" = { size = 0x10 }  # stub -> 0x821D1C40
+"0x82140500" = { size = 0x10 }  # stub -> 0x82347388
+"0x82140A00" = { size = 0x10 }  # stub -> 0x82327DF8
+"0x82140A60" = { size = 0x10 }  # stub -> 0x82300300
+"0x82140D40" = { size = 0x10 }  # stub -> 0x822EE860
+"0x82140E90" = { size = 0x10 }  # stub -> 0x823AD460
+"0x82140EC0" = { size = 0x10 }  # stub -> 0x822F64E0
+"0x82140F20" = { size = 0x10 }  # stub -> 0x82336178
+"0x82140FD0" = { size = 0x10 }  # stub -> 0x82230E90
+"0x82141020" = { size = 0x10 }  # stub -> 0x822DD010
+"0x82141050" = { size = 0x10 }  # stub -> 0x8230B988
+"0x821411D0" = { size = 0x10 }  # stub -> 0x8224A1C0
+"0x82141270" = { size = 0x10 }  # stub -> 0x822EB330
+"0x821412C0" = { size = 0x10 }  # stub -> 0x821E95D0
+"0x821412D0" = { size = 0x10 }  # stub -> 0x821DFA60
+"0x82141320" = { size = 0x10 }  # stub -> 0x82258680
+"0x821413E0" = { size = 0x10 }  # stub -> 0x8237BA98
+"0x82141410" = { size = 0x10 }  # stub -> 0x822518E8
+"0x821415B0" = { size = 0x10 }  # stub -> 0x8238A390
+"0x821416E0" = { size = 0x10 }  # stub -> 0x822ED570
+"0x82141AB0" = { size = 0x10 }  # stub -> 0x82328108
+"0x82141B20" = { size = 0x10 }  # stub -> 0x8222D918
+"0x82141DE0" = { size = 0x10 }  # stub -> 0x822B6D90
+"0x82142070" = { size = 0x10 }  # stub -> 0x8238BB58
+"0x821422C0" = { size = 0x10 }  # stub -> 0x8230A788
+"0x821426E0" = { size = 0x10 }  # stub -> 0x82342680
+"0x82143030" = { size = 0x10 }  # stub -> 0x824071D8
+"0x821435A0" = { size = 0x10 }  # stub -> 0x8222CBB0
+"0x821435F0" = { size = 0x10 }  # stub -> 0x82199640
+"0x821436D0" = { size = 0x10 }  # stub -> 0x822F25B0
+"0x82143700" = { size = 0x10 }  # stub -> 0x82342818
+"0x82143D30" = { size = 0x10 }  # stub -> 0x82331548
+"0x82143E30" = { size = 0x10 }  # stub -> 0x822CCBB8
+"0x821440D0" = { size = 0x10 }  # stub -> 0x82300440
+"0x821442B0" = { size = 0x10 }  # stub -> 0x822D6778
+"0x82144630" = { size = 0x10 }  # stub -> 0x82346F60
+"0x821446C0" = { size = 0x10 }  # stub -> 0x821E6D38
+"0x82144920" = { size = 0x10 }  # stub -> 0x821AE5A8
+"0x82144940" = { size = 0x10 }  # stub -> 0x8221C768
+"0x82144F10" = { size = 0x10 }  # stub -> 0x822802C8
+"0x82145130" = { size = 0x10 }  # stub -> 0x82346DF8
+"0x82145140" = { size = 0x10 }  # stub -> 0x821E7878
+"0x82145570" = { size = 0x10 }  # stub -> 0x822B7C50
+"0x821455C0" = { size = 0x10 }  # stub -> 0x822C3CC0
+"0x82145720" = { size = 0x10 }  # stub -> 0x822F2878
+"0x82145A30" = { size = 0x10 }  # stub -> 0x82312358
+"0x82145A50" = { size = 0x10 }  # stub -> 0x8219FA20
+"0x82145AE0" = { size = 0x10 }  # stub -> 0x821A2688
+"0x82145B50" = { size = 0x10 }  # stub -> 0x822B7680
+"0x82145F80" = { size = 0x10 }  # stub -> 0x822A73B8
+"0x821461E0" = { size = 0x10 }  # stub -> 0x82268998
+"0x82146210" = { size = 0x10 }  # stub -> 0x821B0978
+"0x82146240" = { size = 0x10 }  # stub -> 0x82381EC0
+"0x82146710" = { size = 0x10 }  # stub -> 0x821F7528
+"0x821469F0" = { size = 0x10 }  # stub -> 0x823869E0
+"0x82146AC0" = { size = 0x10 }  # stub -> 0x82229260
+"0x82146AD0" = { size = 0x10 }  # stub -> 0x821D1880
+"0x82146B50" = { size = 0x10 }  # stub -> 0x8226EC30
+"0x82146B80" = { size = 0x10 }  # stub -> 0x82346FF0
+"0x82146EE0" = { size = 0x10 }  # stub -> 0x82247600
+"0x82146EF0" = { size = 0x10 }  # stub -> 0x821DCB58
+"0x82146F40" = { size = 0x10 }  # stub -> 0x822AC368
+"0x821470B0" = { size = 0x10 }  # stub -> 0x82260298
+"0x821471B0" = { size = 0x10 }  # stub -> 0x82402C38
+"0x82147930" = { size = 0x10 }  # stub -> 0x82328C80
+"0x82148120" = { size = 0x10 }  # stub -> 0x821998E0
+"0x82148260" = { size = 0x10 }  # stub -> 0x82377DC8
+"0x82148420" = { size = 0x10 }  # stub -> 0x821C84F8
+"0x82148600" = { size = 0x10 }  # stub -> 0x823231A8
+"0x82148670" = { size = 0x10 }  # stub -> 0x823C95B8
+"0x82148B10" = { size = 0x10 }  # stub -> 0x822BADE0
+"0x82148B20" = { size = 0x10 }  # stub -> 0x8230E5D8
+"0x82148B80" = { size = 0x10 }  # stub -> 0x822F6568
+"0x82148CC0" = { size = 0x10 }  # stub -> 0x822E2570
+"0x82148E70" = { size = 0x10 }  # stub -> 0x8219B200
+"0x82148EF0" = { size = 0x10 }  # stub -> 0x823632E0
+"0x821490F0" = { size = 0x10 }  # stub -> 0x82271F40
+"0x821495F0" = { size = 0x10 }  # stub -> 0x821A0D48
+"0x821498C0" = { size = 0x10 }  # stub -> 0x822AE628
+"0x821498F0" = { size = 0x10 }  # stub -> 0x821FA358
+"0x82149920" = { size = 0x10 }  # stub -> 0x821ED338
+"0x82149E10" = { size = 0x10 }  # stub -> 0x823EA4E0
+"0x8214A3D0" = { size = 0x10 }  # stub -> 0x823321D0
+"0x8214A4C0" = { size = 0x10 }  # stub -> 0x82384D88
+"0x8214A550" = { size = 0x10 }  # stub -> 0x822D6520
+"0x8214A570" = { size = 0x10 }  # stub -> 0x8225FFE0
+"0x8214A610" = { size = 0x10 }  # stub -> 0x82344B68
+"0x8214A860" = { size = 0x10 }  # stub -> 0x822F19D0
+"0x8214A890" = { size = 0x10 }  # stub -> 0x82299348
+"0x8214AB10" = { size = 0x10 }  # stub -> 0x8232D1F8
+"0x8214AE70" = { size = 0x10 }  # stub -> 0x821D1AF8
+"0x8214B540" = { size = 0x10 }  # stub -> 0x8222C560
+"0x8214B9B0" = { size = 0x10 }  # stub -> 0x82384F68
+"0x8214BAB0" = { size = 0x10 }  # stub -> 0x82282BA8
+"0x8214BD90" = { size = 0x10 }  # stub -> 0x822A4058
+"0x8214BDE0" = { size = 0x10 }  # stub -> 0x8227C100
+"0x8214C060" = { size = 0x10 }  # stub -> 0x822F6790
+"0x8214C4C0" = { size = 0x10 }  # stub -> 0x82356030
+"0x8214C910" = { size = 0x10 }  # stub -> 0x822E7258
+"0x8214C950" = { size = 0x10 }  # stub -> 0x8226EBA8
+"0x8214CBB0" = { size = 0x10 }  # stub -> 0x82249FF0
+"0x8214D350" = { size = 0x10 }  # stub -> 0x822E86A0
+"0x8214D510" = { size = 0x10 }  # stub -> 0x82237C88
+"0x8214D860" = { size = 0x10 }  # stub -> 0x821BCCF0
+"0x8214DAB0" = { size = 0x10 }  # stub -> 0x822D8B20
+"0x8214DFB0" = { size = 0x10 }  # stub -> 0x82234D00
+"0x8214E040" = { size = 0x10 }  # stub -> 0x822AC8F8
+"0x8214E090" = { size = 0x10 }  # stub -> 0x821ED2B0
+"0x8214E410" = { size = 0x10 }  # stub -> 0x821AE4A0
+"0x8214E600" = { size = 0x10 }  # stub -> 0x821CAE18
+"0x8214E610" = { size = 0x10 }  # stub -> 0x8228D638
+"0x8214E770" = { size = 0x10 }  # stub -> 0x82380DE0
+"0x8214E840" = { size = 0x10 }  # stub -> 0x822DA210
+"0x8214E9B0" = { size = 0x10 }  # stub -> 0x822F65F0
+"0x8214ED30" = { size = 0x10 }  # stub -> 0x82327848
+"0x8214EDC0" = { size = 0x10 }  # stub -> 0x82268A10
+"0x8214EE60" = { size = 0x10 }  # stub -> 0x8222DEC0
+"0x8214F210" = { size = 0x10 }  # stub -> 0x82408378
+"0x8214F2F0" = { size = 0x10 }  # stub -> 0x821988C0
+"0x8214F710" = { size = 0x10 }  # stub -> 0x823AE690
+"0x8214F7C0" = { size = 0x10 }  # stub -> 0x822318A0
+"0x8214F8C0" = { size = 0x10 }  # stub -> 0x82230800
+"0x8214F9B0" = { size = 0x10 }  # stub -> 0x82257CB0
+"0x8214FF60" = { size = 0x10 }  # stub -> 0x8241AD78
+"0x821500A0" = { size = 0x10 }  # stub -> 0x821AEAC0
+"0x821501E0" = { size = 0x10 }  # stub -> 0x8219DC70
+"0x82150360" = { size = 0x10 }  # stub -> 0x82408558
+"0x821507B0" = { size = 0x10 }  # stub -> 0x8238B588
+"0x82150840" = { size = 0x10 }  # stub -> 0x8239E510
+"0x82150990" = { size = 0x10 }  # stub -> 0x822477F8
+"0x82150A70" = { size = 0x10 }  # stub -> 0x821F3248
+"0x82150AB0" = { size = 0x10 }  # stub -> 0x821D70C0
+"0x82150AC0" = { size = 0x10 }  # stub -> 0x8224A268
+"0x82150CF0" = { size = 0x10 }  # stub -> 0x823896C8
+"0x82150FF0" = { size = 0x10 }  # stub -> 0x821D7188
+"0x82151080" = { size = 0x10 }  # stub -> 0x82309250
+"0x82151170" = { size = 0x10 }  # stub -> 0x822BA100
+"0x821515F0" = { size = 0x10 }  # stub -> 0x82238780
+"0x821517A0" = { size = 0x10 }  # stub -> 0x8228AB30
+"0x821517E0" = { size = 0x10 }  # stub -> 0x82347830
+"0x821519E0" = { size = 0x10 }  # stub -> 0x82381270
+"0x821519F0" = { size = 0x10 }  # stub -> 0x8230DF18
+"0x82151A20" = { size = 0x10 }  # stub -> 0x821EA2A8
+"0x82151CB0" = { size = 0x10 }  # stub -> 0x822C9758
+"0x82151CD0" = { size = 0x10 }  # stub -> 0x8231ABF0
+"0x82151E10" = { size = 0x10 }  # stub -> 0x82342708
+"0x82151FC0" = { size = 0x10 }  # stub -> 0x823BC220
+"0x82152030" = { size = 0x10 }  # stub -> 0x821C8640
+"0x82152090" = { size = 0x10 }  # stub -> 0x822D72A8
+"0x82152210" = { size = 0x10 }  # stub -> 0x8241AB00
+"0x82152380" = { size = 0x10 }  # stub -> 0x82238B80
+"0x821523A0" = { size = 0x10 }  # stub -> 0x821997B8
+"0x821523E0" = { size = 0x10 }  # stub -> 0x82389EC8
+"0x82152450" = { size = 0x10 }  # stub -> 0x82251980
+"0x82152590" = { size = 0x10 }  # stub -> 0x822A7788
+"0x82152660" = { size = 0x10 }  # stub -> 0x822E2D48
+"0x821526D0" = { size = 0x10 }  # stub -> 0x821A0F10
+"0x82152EA0" = { size = 0x10 }  # stub -> 0x821AF038
+"0x82152EB0" = { size = 0x10 }  # stub -> 0x8239D6D0
+"0x82152ED0" = { size = 0x10 }  # stub -> 0x8229F428
+"0x82153210" = { size = 0x10 }  # stub -> 0x8232B8C0
+"0x82153390" = { size = 0x10 }  # stub -> 0x822F6678
+"0x82153910" = { size = 0x10 }  # stub -> 0x821A9808
+"0x82153D40" = { size = 0x10 }  # stub -> 0x821A1540
+"0x82154110" = { size = 0x10 }  # stub -> 0x821F5598
+"0x82154220" = { size = 0x10 }  # stub -> 0x821CCE48
+"0x82154280" = { size = 0x10 }  # stub -> 0x823453A8
+"0x821542A0" = { size = 0x10 }  # stub -> 0x8219AAC0
+"0x821542F0" = { size = 0x10 }  # stub -> 0x821A4778
+"0x82154430" = { size = 0x10 }  # stub -> 0x8231F048
+"0x82154480" = { size = 0x10 }  # stub -> 0x82199388
+"0x821546B0" = { size = 0x10 }  # stub -> 0x8241B9E8
+"0x82154730" = { size = 0x10 }  # stub -> 0x82330698
+"0x82154770" = { size = 0x10 }  # stub -> 0x82281D88
+"0x82154810" = { size = 0x10 }  # stub -> 0x82387518
+"0x821548D0" = { size = 0x10 }  # stub -> 0x821AE128
+"0x821548F0" = { size = 0x10 }  # stub -> 0x822B5350
+"0x82154D70" = { size = 0x10 }  # stub -> 0x821C8838
+"0x82155080" = { size = 0x10 }  # stub -> 0x8219FB88
+"0x82155110" = { size = 0x10 }  # stub -> 0x8230BB48
+"0x82155230" = { size = 0x10 }  # stub -> 0x822772C8
+"0x82155380" = { size = 0x10 }  # stub -> 0x823463B0
+"0x82155440" = { size = 0x10 }  # stub -> 0x822A1728
+"0x82155450" = { size = 0x10 }  # stub -> 0x82320438
+"0x821554E0" = { size = 0x10 }  # stub -> 0x82362AE0
+"0x82155660" = { size = 0x10 }  # stub -> 0x82249F00
+"0x82155850" = { size = 0x10 }  # stub -> 0x823DEE58
+"0x82155980" = { size = 0x10 }  # stub -> 0x821FAA58
+"0x821561B0" = { size = 0x10 }  # stub -> 0x8224C338
+"0x82156290" = { size = 0x10 }  # stub -> 0x82307D38
+"0x821562A0" = { size = 0x10 }  # stub -> 0x821D0978
+"0x821563E0" = { size = 0x10 }  # stub -> 0x82303C60
+"0x82156550" = { size = 0x10 }  # stub -> 0x821C7768
+"0x82156640" = { size = 0x10 }  # stub -> 0x822311C0
+"0x82156930" = { size = 0x10 }  # stub -> 0x821E77D8
+"0x82156970" = { size = 0x10 }  # stub -> 0x82265928
+"0x82156DD0" = { size = 0x10 }  # stub -> 0x8222E108
+"0x82156E40" = { size = 0x10 }  # stub -> 0x82387480
+"0x82157410" = { size = 0x10 }  # stub -> 0x821A9070
+"0x82157620" = { size = 0x10 }  # stub -> 0x822D8AA0
+"0x821577A0" = { size = 0x10 }  # stub -> 0x8238D7C0
+"0x821577B0" = { size = 0x10 }  # stub -> 0x822F10C0
+"0x82157900" = { size = 0x10 }  # stub -> 0x821F75B8
+"0x82157DC0" = { size = 0x10 }  # stub -> 0x82246A80
+"0x82158090" = { size = 0x10 }  # stub -> 0x82239CF8
+"0x821581A0" = { size = 0x10 }  # stub -> 0x821C8760
+"0x821581B0" = { size = 0x10 }  # stub -> 0x822D65A8
+"0x821582A0" = { size = 0x10 }  # stub -> 0x821A0DD0
+"0x821582E0" = { size = 0x10 }  # stub -> 0x822FA3C0
+"0x82158440" = { size = 0x10 }  # stub -> 0x8232B320
+"0x821584A0" = { size = 0x10 }  # stub -> 0x822FF9C0
+"0x821585F0" = { size = 0x10 }  # stub -> 0x821C8908
+"0x82158720" = { size = 0x10 }  # stub -> 0x82232380
+"0x82158930" = { size = 0x10 }  # stub -> 0x821E0950
+"0x82158A30" = { size = 0x10 }  # stub -> 0x8241A820
+"0x82158BF0" = { size = 0x10 }  # stub -> 0x82342570
+"0x82158C00" = { size = 0x10 }  # stub -> 0x822FA350
+"0x82159170" = { size = 0x10 }  # stub -> 0x821CC010
+"0x821597C0" = { size = 0x10 }  # stub -> 0x82247690
+"0x82159BC0" = { size = 0x10 }  # stub -> 0x8226A038
+"0x82159CA0" = { size = 0x10 }  # stub -> 0x822D6498
+"0x82159EB0" = { size = 0x10 }  # stub -> 0x822AC1D0
+"0x8215A1D0" = { size = 0x10 }  # stub -> 0x823B90E0
+"0x8215A380" = { size = 0x10 }  # stub -> 0x82268E90
+"0x8215A4D0" = { size = 0x10 }  # stub -> 0x821F8C58
+"0x8215A5A0" = { size = 0x10 }  # stub -> 0x821AF048
+"0x8215A6F0" = { size = 0x10 }  # stub -> 0x821CB460
+"0x8215A750" = { size = 0x10 }  # stub -> 0x8227BBA8
+"0x8215A880" = { size = 0x10 }  # stub -> 0x8222DDE8
+"0x8215AAC0" = { size = 0x10 }  # stub -> 0x822BD238
+"0x8215B1A0" = { size = 0x10 }  # stub -> 0x8238D490
+"0x8215B560" = { size = 0x10 }  # stub -> 0x821D5E90
+"0x8215B5D0" = { size = 0x10 }  # stub -> 0x822765A8
+"0x8215B8B0" = { size = 0x10 }  # stub -> 0x823CEB80
+"0x8215B920" = { size = 0x10 }  # stub -> 0x8234A898
+"0x8215BA30" = { size = 0x10 }  # stub -> 0x8233A7C0
+"0x8215BA60" = { size = 0x10 }  # stub -> 0x82259B88
+"0x8215BF10" = { size = 0x10 }  # stub -> 0x8224C198
+"0x8215BF90" = { size = 0x10 }  # stub -> 0x82298610
+"0x8215C000" = { size = 0x10 }  # stub -> 0x823465F0
+"0x8215C070" = { size = 0x10 }  # stub -> 0x823BA648
+"0x8215C360" = { size = 0x10 }  # stub -> 0x822E1CF0
+"0x8215C3E0" = { size = 0x10 }  # stub -> 0x821F15E8
+"0x8215C530" = { size = 0x10 }  # stub -> 0x82199498
+"0x8215C8E0" = { size = 0x10 }  # stub -> 0x8230E418
+"0x8215C9D0" = { size = 0x10 }  # stub -> 0x822ED018
+"0x8215CAF0" = { size = 0x10 }  # stub -> 0x8229A730
+"0x8215CB00" = { size = 0x10 }  # stub -> 0x821DB198
+"0x8215CBA0" = { size = 0x10 }  # stub -> 0x82405F68
+"0x8215CCA0" = { size = 0x10 }  # stub -> 0x822A6C30
+"0x8215CD50" = { size = 0x10 }  # stub -> 0x822860A8
+"0x8215CF90" = { size = 0x10 }  # stub -> 0x82272AF8
+"0x8215CFB0" = { size = 0x10 }  # stub -> 0x82384CF8
+"0x8215D530" = { size = 0x10 }  # stub -> 0x82336200
+"0x8215D6B0" = { size = 0x10 }  # stub -> 0x823DFB08
+"0x8215D780" = { size = 0x10 }  # stub -> 0x824046F0
+"0x8215D7C0" = { size = 0x10 }  # stub -> 0x8224E468
+"0x8215D830" = { size = 0x10 }  # stub -> 0x823E8430
+"0x8215DB50" = { size = 0x10 }  # stub -> 0x82251A48
+"0x8215E220" = { size = 0x10 }  # stub -> 0x821D2BB8
+"0x8215E340" = { size = 0x10 }  # stub -> 0x8229C738
+"0x8215E490" = { size = 0x10 }  # stub -> 0x821E7908
+"0x8215E4C0" = { size = 0x10 }  # stub -> 0x82301CB8
+"0x8215E710" = { size = 0x10 }  # stub -> 0x823BFA40
+"0x8215E840" = { size = 0x10 }  # stub -> 0x8231EF98
+"0x8215ED40" = { size = 0x10 }  # stub -> 0x821C8440
+"0x8215EEA0" = { size = 0x10 }  # stub -> 0x823B6860
+"0x8215EFF0" = { size = 0x10 }  # stub -> 0x822EA7E8
+"0x8215F050" = { size = 0x10 }  # stub -> 0x823425F8
+"0x8215F120" = { size = 0x10 }  # stub -> 0x82297D90
+"0x8215FA90" = { size = 0x10 }  # stub -> 0x822FB410
+"0x8215FAD0" = { size = 0x10 }  # stub -> 0x822FDC70
+"0x8215FEF0" = { size = 0x10 }  # stub -> 0x822D8798
+"0x82160410" = { size = 0x10 }  # stub -> 0x821B0D78
+"0x821604A0" = { size = 0x10 }  # stub -> 0x822BDC08
+"0x82160540" = { size = 0x10 }  # stub -> 0x82330C10
+"0x82160800" = { size = 0x10 }  # stub -> 0x822E92B8
+"0x82160B00" = { size = 0x10 }  # stub -> 0x82208F60
+"0x82160F20" = { size = 0x10 }  # stub -> 0x8220D0B0
+"0x82161270" = { size = 0x10 }  # stub -> 0x8229C620
+"0x821612F0" = { size = 0x10 }  # stub -> 0x822F8D30
+"0x821615C0" = { size = 0x10 }  # stub -> 0x822F6708
+"0x82161750" = { size = 0x10 }  # stub -> 0x8229AE58
+"0x82161850" = { size = 0x10 }  # stub -> 0x822ED620
+"0x82161B00" = { size = 0x10 }  # stub -> 0x821CE638
+"0x82161C10" = { size = 0x10 }  # stub -> 0x822A34A8
+"0x82161DB0" = { size = 0x10 }  # stub -> 0x82348278
+"0x82162090" = { size = 0x10 }  # stub -> 0x82307DC0
+"0x82162240" = { size = 0x10 }  # stub -> 0x82384E20
+"0x82162250" = { size = 0x10 }  # stub -> 0x82238EF8
+"0x82162310" = { size = 0x10 }  # stub -> 0x82260180
+"0x821625D0" = { size = 0x10 }  # stub -> 0x8226F2A0
+"0x82162890" = { size = 0x10 }  # stub -> 0x8238DAA0
+"0x821628A0" = { size = 0x10 }  # stub -> 0x822EE910
+"0x82162A90" = { size = 0x10 }  # stub -> 0x823560B8
+"0x82162AB0" = { size = 0x10 }  # stub -> 0x82257908
+"0x82162B40" = { size = 0x10 }  # stub -> 0x8230BE68
+"0x82162D70" = { size = 0x10 }  # stub -> 0x82270960
+"0x82163810" = { size = 0x10 }  # stub -> 0x82299398
+"0x821638E0" = { size = 0x10 }  # stub -> 0x821CC080
+"0x82163900" = { size = 0x10 }  # stub -> 0x8232E158
+"0x82164140" = { size = 0x10 }  # stub -> 0x82344268
+"0x821642F0" = { size = 0x10 }  # stub -> 0x823723C0
+"0x821645D0" = { size = 0x10 }  # stub -> 0x82384EB0
+"0x82164930" = { size = 0x10 }  # stub -> 0x821C85B0
+"0x82164970" = { size = 0x10 }  # stub -> 0x82378990
+"0x82164B30" = { size = 0x10 }  # stub -> 0x822600F0
+"0x82164B50" = { size = 0x10 }  # stub -> 0x8224CD08
+"0x82164E00" = { size = 0x10 }  # stub -> 0x821AB798
+"0x82164E20" = { size = 0x10 }  # stub -> 0x821EC998
+"0x82164EB0" = { size = 0x10 }  # stub -> 0x821C8380
+"0x82165160" = { size = 0x10 }  # stub -> 0x823472F8
+"0x82165590" = { size = 0x10 }  # stub -> 0x822D6828
+"0x82165620" = { size = 0x10 }  # stub -> 0x821A0E60
+"0x82165640" = { size = 0x10 }  # stub -> 0x821D1B80
+"0x82165CB0" = { size = 0x10 }  # stub -> 0x821AF178
+"0x82165EA0" = { size = 0x10 }  # stub -> 0x82309F18
+"0x82165F40" = { size = 0x10 }  # stub -> 0x822B7A18
+"0x82165FD0" = { size = 0x10 }  # stub -> 0x821AC870
+"0x82166110" = { size = 0x10 }  # stub -> 0x821F0460
+"0x82166220" = { size = 0x10 }  # stub -> 0x82380988
+"0x82166230" = { size = 0x10 }  # stub -> 0x82328128
+"0x82166460" = { size = 0x10 }  # stub -> 0x8226EB20
+"0x821665F0" = { size = 0x10 }  # stub -> 0x82402358
+"0x82166690" = { size = 0x10 }  # stub -> 0x8239E6F0
+"0x82166800" = { size = 0x10 }  # stub -> 0x822B92C0
+"0x82166CF0" = { size = 0x10 }  # stub -> 0x8227BB20
+"0x821672D0" = { size = 0x10 }  # stub -> 0x82258390
+"0x82167630" = { size = 0x10 }  # stub -> 0x822B6998
+"0x82167B60" = { size = 0x10 }  # stub -> 0x822B8B98
+"0x82167F00" = { size = 0x10 }  # stub -> 0x82197DC0
+"0x82167F90" = { size = 0x10 }  # stub -> 0x821F3318
+"0x82168240" = { size = 0x10 }  # stub -> 0x82342790
+"0x82168470" = { size = 0x10 }  # stub -> 0x8224A148
+"0x82168E40" = { size = 0x10 }  # stub -> 0x822DA1A0
+"0x82168F70" = { size = 0x10 }  # stub -> 0x822B0230
+"0x82168FE0" = { size = 0x10 }  # stub -> 0x821D73F8
+"0x82169110" = { size = 0x10 }  # stub -> 0x822B8BF8
+"0x821695F0" = { size = 0x10 }  # stub -> 0x822A2AB0
+"0x82169620" = { size = 0x10 }  # stub -> 0x822D66F0
+"0x82169650" = { size = 0x10 }  # stub -> 0x821ED8E0
+"0x82169810" = { size = 0x10 }  # stub -> 0x82232760
+"0x82169940" = { size = 0x10 }  # stub -> 0x823263D8
+"0x82169E00" = { size = 0x10 }  # stub -> 0x823289D0
+"0x8216A2F0" = { size = 0x10 }  # stub -> 0x8229C6A8
+"0x8216A420" = { size = 0x10 }  # stub -> 0x822D6640
+"0x8216A940" = { size = 0x10 }  # stub -> 0x82270358
+"0x8216AF30" = { size = 0x10 }  # stub -> 0x82259140
+"0x8216AFC0" = { size = 0x10 }  # stub -> 0x822A3FC8
+"0x8216B540" = { size = 0x10 }  # stub -> 0x822EC1B0
+"0x8216BBB0" = { size = 0x10 }  # stub -> 0x8223A158
+"0x8216BCD0" = { size = 0x10 }  # stub -> 0x82338FD8
+"0x8216BD30" = { size = 0x10 }  # stub -> 0x8239DD00
+"0x8216BE80" = { size = 0x10 }  # stub -> 0x822FD6C8
+"0x8216BF30" = { size = 0x10 }  # stub -> 0x82322D48
+"0x8216BF70" = { size = 0x10 }  # stub -> 0x823EA560
+"0x8216BF90" = { size = 0x10 }  # stub -> 0x822EE770
+"0x8216C150" = { size = 0x10 }  # stub -> 0x822ED068
+"0x8216C340" = { size = 0x10 }  # stub -> 0x82307CB0
+"0x8216C3B0" = { size = 0x10 }  # stub -> 0x82307E58
+"0x8216C540" = { size = 0x10 }  # stub -> 0x821EE8D8
+"0x8216C790" = { size = 0x10 }  # stub -> 0x822F6828
+"0x8216C820" = { size = 0x10 }  # stub -> 0x82271B18
+"0x8216CC60" = { size = 0x10 }  # stub -> 0x8232C5C0
+"0x8216CCF0" = { size = 0x10 }  # stub -> 0x822E2C08
+"0x8216D080" = { size = 0x10 }  # stub -> 0x822FB5D0
+"0x8216D3D0" = { size = 0x10 }  # stub -> 0x824013E8
+"0x8216D580" = { size = 0x10 }  # stub -> 0x82386F48
+"0x8216D780" = { size = 0x10 }  # stub -> 0x821ED4D8
+"0x8216DA70" = { size = 0x10 }  # stub -> 0x82197F98
+"0x8216DE50" = { size = 0x10 }  # stub -> 0x82197F10
+"0x8216DEF0" = { size = 0x10 }  # stub -> 0x821F2B98
+"0x8216E170" = { size = 0x10 }  # stub -> 0x823BB5D0
+"0x8216E190" = { size = 0x10 }  # stub -> 0x822A0A78
+"0x8216E200" = { size = 0x10 }  # stub -> 0x82260068
+"0x8216E2D0" = { size = 0x10 }  # stub -> 0x82405FF0
+"0x8216E360" = { size = 0x10 }  # stub -> 0x82247738
+"0x8216E560" = { size = 0x10 }  # stub -> 0x823D9790
+"0x8216E590" = { size = 0x10 }  # stub -> 0x82388748
+"0x8216EC80" = { size = 0x10 }  # stub -> 0x8241A848
+"0x8216F110" = { size = 0x10 }  # stub -> 0x82275270
+"0x8216F210" = { size = 0x10 }  # stub -> 0x82247570
+"0x8216F2F0" = { size = 0x10 }  # stub -> 0x82336288
+"0x8216F320" = { size = 0x10 }  # stub -> 0x823E2990
+"0x8216F3D0" = { size = 0x10 }  # stub -> 0x822B6C80
+"0x8216F3E0" = { size = 0x10 }  # stub -> 0x8230A7F8
+"0x8216F420" = { size = 0x10 }  # stub -> 0x822FA4C8
+"0x8216F570" = { size = 0x10 }  # stub -> 0x821CD900
+"0x8216FB30" = { size = 0x10 }  # stub -> 0x8235B7D0
+"0x8216FC30" = { size = 0x10 }  # stub -> 0x821AE1B0
+"0x8216FCE0" = { size = 0x10 }  # stub -> 0x823428A0
+"0x8216FF20" = { size = 0x10 }  # stub -> 0x8238A320
+"0x82170180" = { size = 0x10 }  # stub -> 0x821987D0
+"0x821701A0" = { size = 0x10 }  # stub -> 0x82239E78
+"0x821704B0" = { size = 0x10 }  # stub -> 0x821E7998
+"0x821704D0" = { size = 0x10 }  # stub -> 0x82271258
+"0x821709D0" = { size = 0x10 }  # stub -> 0x8231BBE0
+"0x82170BD0" = { size = 0x10 }  # stub -> 0x823700F8
+"0x82170D90" = { size = 0x10 }  # stub -> 0x821C86C8
+"0x82170DD0" = { size = 0x10 }  # stub -> 0x821CAD30
+"0x821711E0" = { size = 0x10 }  # stub -> 0x821FAC18
+"0x82171200" = { size = 0x10 }  # stub -> 0x8234D150
+"0x82171670" = { size = 0x10 }  # stub -> 0x822B53D8
+"0x82171D00" = { size = 0x10 }  # stub -> 0x82297E40
+"0x82172340" = { size = 0x10 }  # stub -> 0x822A7580
+"0x82172530" = { size = 0x10 }  # stub -> 0x82301C08
+"0x82172550" = { size = 0x10 }  # stub -> 0x822F2B40
+"0x82172640" = { size = 0x10 }  # stub -> 0x821EE5C8
+"0x82172690" = { size = 0x10 }  # stub -> 0x82260210
+"0x82172760" = { size = 0x10 }  # stub -> 0x822FDEF0
+"0x82172850" = { size = 0x10 }  # stub -> 0x823DACD8
+"0x8296C26C" = { size = 0x10 }  # stub -> 0x821AE5A8
+"0x8296FA6C" = { size = 0x10 }  # stub -> 0x821998E0
+"0x82976C3C" = { size = 0x10 }  # stub -> 0x821988C0
+"0x829779EC" = { size = 0x10 }  # stub -> 0x821AEAC0
+"0x82979CEC" = { size = 0x10 }  # stub -> 0x821997B8
+"0x8297B1DC" = { size = 0x10 }  # stub -> 0x821A13E8
+"0x82983E7C" = { size = 0x10 }  # stub -> 0x82199498
+"0x8299050C" = { size = 0x10 }  # stub -> 0x82270468
+"0x8299157C" = { size = 0x10 }  # stub -> 0x82386C38
+"0x82997ACC" = { size = 0x10 }  # stub -> 0x821987D0
+
+# First PC build (2026-10-21): two catch funclets ran on into the next one ("use of undeclared label"). Each funclet
+# (`addi r31,r12,-N; mflr r12; ...`) ends in a rethrow (`li r4,0; li r3,0; bl 0x8279AAB0` = _CxxThrowException, which
+# does not return), followed by two data words; the generator read past it into the following funclet. The next
+# funclets (0x8227FCCC, 0x8262C9D0) are functions of their own already. Ends from tools/ppc_dis.py.
+"0x8227FC78" = { end = 0x8227FCC4 }  # rethrow at 0x8227FCC0; next funclet 0x8227FCCC
+"0x8262C97C" = { end = 0x8262C9C8 }  # rethrow at 0x8262C9C4; next funclet 0x8262C9D0
+"0x82274454" = { end = 0x822744A0 }  # rethrow at 0x8227449C; next funclet 0x822744A8 (second build, tools/label_check.py)
+
+# First boot (2026-10-21): 12 functions reached only through the jump stubs (each by its 12-13 copies: the 146 "jump
+# to an address with no function" of the app's [stubs] line, src/peggle1_stubs.cpp). Each follows another function's
+# last instruction (blr, bctr or a tail `b`), so discovery took it for part of that one; all are complete small
+# functions (tools/ppc_dis.py: leaf getters/setters, a float routine, an empty one).
+"0x821EE520" = { }  # target of the stub table entries in .xidata and its 12 copies
+"0x821EEE30" = { }  # target of the stub table entries in .xidata and its 12 copies
+"0x822B0720" = { }  # target of the stub table entries in .xidata and its 12 copies
+"0x82303FA8" = { }  # target of the stub table entries in .xidata and its 12 copies
+"0x8230E2F8" = { }  # target of the stub table entries in .xidata and its 12 copies
+"0x82316C00" = { }  # target of the stub table entries in .xidata and its 12 copies
+"0x823212C8" = { }  # target of the stub table entries in .xidata and its 12 copies
+"0x823225B0" = { }  # target of the stub table entries in .xidata and its 12 copies
+"0x8232AE08" = { }  # target of the stub table entries in .xidata and its 12 copies
+"0x823B14D8" = { }  # target of the stub table entries in .xidata and its 12 copies
+"0x823B9400" = { }  # target of the stub table entries in .xidata and its 12 copies
+"0x823E7740" = { }  # target of the stub table entries in .xidata and its 12 copies
+
+# Code pointers into unclaimed gaps, stored in data (vtables, callback tables) or built in code (lis/addi:
+# callbacks passed at run time), accepted by tools/pointer_fixpoint.py pass 1: the scratch listing fits
+# in the gap (or continues only into a registered function it branches to: "then the registered tail"),
+# ends in a terminator and reads no register that is undefined at a function entry. The comment says
+# where the pointer is stored ("pointer at") or built ("built at", inside the code range).
+"0x82140AE0" = { }  # 4 instructions, pointer at 0x82109544
+"0x82142300" = { }  # 4 instructions, built at 0x822E5034 (+2 more)
+"0x821424D0" = { }  # 4 instructions, built at 0x82311BB8 (+2 more)
+"0x82144E80" = { }  # 4 instructions, built at 0x822BDD64 (+4 more)
+"0x82146200" = { }  # 4 instructions, built at 0x82280D40
+"0x821482A0" = { }  # 4 instructions, built at 0x822E5038
+"0x82149500" = { }  # 4 instructions, pointer at 0x821095A8
+"0x8214D950" = { }  # 4 instructions, built at 0x822FED14
+"0x8214E720" = { }  # 4 instructions, built at 0x82253398 (+1 more)
+"0x82150EA0" = { }  # 4 instructions, built at 0x82292410 (+1 more)
+"0x82151610" = { }  # 4 instructions, pointer at 0x821095E4
+"0x82151EB0" = { }  # 4 instructions, pointer at 0x82109610
+"0x82155F60" = { }  # 4 instructions, pointer at 0x8210957C
+"0x82156300" = { }  # 4 instructions, built at 0x823C7C0C
+"0x82159710" = { }  # 4 instructions, built at 0x8228EE58
+"0x8215A320" = { }  # 4 instructions, built at 0x8235CB90 (+3 more)
+"0x8215BB10" = { }  # 4 instructions, built at 0x8222B86C
+"0x8215C8F0" = { }  # 4 instructions, built at 0x8227E57C (+1 more)
+"0x8215F270" = { }  # 4 instructions, built at 0x8231C600
+"0x82160660" = { }  # 4 instructions, built at 0x8235FCC8
+"0x821607D0" = { }  # 4 instructions, built at 0x822C61C0
+"0x82163FB0" = { }  # 4 instructions, built at 0x822FED10 (+3 more)
+"0x82166B60" = { }  # 4 instructions, pointer at 0x82109690
+"0x82168F10" = { }  # 4 instructions, built at 0x822AC3D8 (+4 more)
+"0x821696B0" = { }  # 4 instructions, built at 0x8228EE54 (+2 more)
+"0x8216D450" = { }  # 4 instructions, built at 0x823F0184
+"0x8216DBE0" = { }  # 4 instructions, built at 0x823C5CF4 (+3 more)
+"0x8216E4F0" = { }  # 4 instructions, built at 0x823EAFC0 (+3 more)
+"0x8216EBA0" = { }  # 4 instructions, built at 0x823D3210
+"0x8216F140" = { }  # 4 instructions, built at 0x82253394 (+5 more)
+"0x82172320" = { }  # 4 instructions, pointer at 0x8210964C
+"0x8246E474" = { }  # 4 instructions, pointer at 0x82108928
+"0x824840A0" = { }  # 3 instructions, pointer at 0x82078D64
+# The two tables' owners (2026-10-21; the sweep re-accepted the tables while their owners were undiscovered, since a
+# table outside every function is a gap to it): 0x8248852C (`lis r11,0x8060; ori; cmpw r3,r11` after the `blr` of
+# 0x82488524, a switch through the absolute table at 0x82488564; maps an error code to a small number) and 0x827D9CD0
+# (after the tail `b` at 0x827D9CCC; `cmplwi r11,21; lfs f1; bgtlr`, a switch through the table at 0x827D9CFC that
+# returns a float). Neither has a direct caller (tools/callers.py): reached through pointers.
+"0x8248852C" = { }
+"0x827D9CD0" = { }
+# Boot 3 (2026-10-21): "Call to invalid or unregistered function at 0x8284B058". It is a vtable entry (pointer at
+# 0x820DD348, the vtable sub_8284B078 installs): `mr r3,r4; lis/ori r4,'NWM '; li r5,0; b 0x82183F30`, a tail call
+# into an import thunk (0x82182D30-0x821841E0: 332 thunks). tools/pointer_fixpoint.py rejected it as "tail branch into
+# a function body" (thunks are not generated functions); it is the only one of its 68 such rejections whose branch
+# goes to a thunk (the rest end in the __restgprlr epilogues at 0x8279A878-0x8279A88C: pieces of other functions).
+"0x8284B058" = { size = 0x14 }  # pointer at 0x820DD348
+# "0x82488564" left out (2026-10-21, review of pass 1): the absolute jump table of sub_8248852C (lis/addi at 0x8248854C, lwzx, bctr at 0x82488560): its words are case addresses, not code
+"0x8248BCF0" = { }  # 2 instructions, pointer at 0x820793A8
+"0x8248BD10" = { }  # 2 instructions, pointer at 0x820793AC
+"0x8248E500" = { }  # 2 instructions, pointer at 0x82079408
+"0x8248E520" = { }  # 2 instructions, pointer at 0x8207940C
+"0x8248E540" = { }  # 2 instructions, pointer at 0x82079404
+"0x8248E560" = { }  # 2 instructions, pointer at 0x82079410
+"0x8248E868" = { }  # 8 instructions, pointer at 0x82079458
+"0x8248E888" = { }  # 8 instructions, pointer at 0x8207945C
+"0x8248E8A8" = { }  # 8 instructions, pointer at 0x82079460
+"0x8248E8C8" = { }  # 8 instructions, pointer at 0x82079464
+"0x8248E8E8" = { }  # 8 instructions, pointer at 0x82079468
+"0x8248E908" = { }  # 8 instructions, pointer at 0x8207946C
+"0x8248E928" = { }  # 8 instructions, pointer at 0x82079470
+"0x8248E948" = { }  # 8 instructions, pointer at 0x82079474
+"0x8248E968" = { }  # 8 instructions, pointer at 0x82079478
+"0x8248E988" = { }  # 8 instructions, pointer at 0x8207947C
+"0x824902B8" = { }  # 4 instructions, built at 0x82492A38
+"0x82495EC8" = { }  # 2 instructions, pointer at 0x82079394 (+1 more)
+"0x82781750" = { }  # 17 instructions, pointer at 0x82F94A3C
+"0x82781F50" = { }  # 18 instructions, pointer at 0x82F94A58
+# "0x827D9CFC" left out (2026-10-21, review of pass 1): the absolute jump table right after the bctr at 0x827D9CF8 (22 cases, tools/switch_check.py)
+"0x827DCF38" = { }  # 2 instructions, pointer at 0x820D8568 (+2 more)
+"0x827EADD8" = { }  # 3 instructions, pointer at 0x820D9494
+"0x828044F8" = { }  # 9 in the gap, then the registered tail sub_8280451C, pointer at 0x820D9F08 (+4 more)
+"0x82804540" = { }  # 7 in the gap, then the registered tail sub_8280455C, pointer at 0x820D9EFC (+4 more)
+"0x828091D8" = { }  # 2 instructions, pointer at 0x820DA29C
+"0x828091E0" = { }  # 2 instructions, pointer at 0x820DA290
+"0x828098C8" = { }  # 2 instructions, pointer at 0x820DA2D8
+"0x828098D0" = { }  # 4 instructions, pointer at 0x820D9F64 (+1 more)
+"0x8280A7C0" = { }  # 2 instructions, pointer at 0x820DA334
+"0x82811A30" = { }  # 2 instructions, pointer at 0x820DB320
+"0x82811A38" = { }  # 2 instructions, pointer at 0x820DB2F0
+"0x82811A50" = { }  # 2 instructions, pointer at 0x820DB2E4
+"0x82811A60" = { }  # 2 instructions, pointer at 0x820DB2D8
+"0x82811A78" = { }  # 2 instructions, pointer at 0x820DB2EC
+"0x82811A80" = { }  # 2 instructions, pointer at 0x820DB2C4
+"0x82811A88" = { }  # 2 instructions, pointer at 0x820DB2E0
+"0x82812FB8" = { }  # 2 instructions, pointer at 0x820DB2D0
+"0x82814470" = { }  # 2 instructions, pointer at 0x820DB3E8
+"0x82814488" = { }  # 2 instructions, pointer at 0x820DB3DC
+"0x828144B0" = { }  # 2 instructions, pointer at 0x820DB428
+"0x828144B8" = { }  # 2 instructions, pointer at 0x820DB3B4
+"0x828144C0" = { }  # 2 instructions, pointer at 0x820DB3F8
+"0x828144D8" = { }  # 2 instructions, pointer at 0x820DB3EC
+"0x828144E8" = { }  # 2 instructions, pointer at 0x820DB3BC
+"0x828144F0" = { }  # 2 instructions, pointer at 0x820DB3E0
+"0x82814508" = { }  # 2 instructions, pointer at 0x820DB3B0
+"0x82814510" = { }  # 2 instructions, pointer at 0x820DB3F4
+"0x82863FA8" = { }  # 2 instructions, pointer at 0x820DD658
+"0x8298010C" = { }  # 4 instructions, pointer at 0x83355680
+"0x82B725E0" = { }  # 1 instructions, built at 0x82B1D270
+"0x82B97F04" = { }  # 4 instructions, pointer at 0x83353D5C
+"0x82BF991C" = { }  # 4 instructions, pointer at 0x8338CDEC
+
+# Code pointers into unclaimed gaps, stored in data (vtables, callback tables) or built in code (lis/addi:
+# callbacks passed at run time), accepted by tools/pointer_fixpoint.py pass 1: the scratch listing fits
+# in the gap (or continues only into a registered function it branches to: "then the registered tail"),
+# ends in a terminator and reads no register that is undefined at a function entry. The comment says
+# where the pointer is stored ("pointer at") or built ("built at", inside the code range).
+
+# Jump tables (2026-10-21, tools/switch_check.py --code 82140000:82F778A4, all code sections). These must stay after
+# every [functions] line: a key below a [[switch_tables]] header belongs to that table.
+#
+# sub_82448190: a byte table indexed by a 6-bit field (`rlwinm r10,r9,0,26,31` at 0x82448294: 64 values), which
+# tools/switch_check.py took for 64 cases ("truncated", 17 generated). The table at 0x82070738 is 12 bytes: 9 cases
+# (21 24 27 2A 2D 30 33 36 3A, << 2 from 0x824482C0) and 3 zero bytes, then floats (3F870A3D = 1.055). Its 64-case
+# fix sent 9 cases into the next function, sub_82448548 ("Jump target ... unresolved"). These are the 12 real entries;
+# the field's other values do not occur.
+[[switch_tables]]
+address = 0x824482BC
+register = 10
+labels = [
+    0x82448344, 0x82448350, 0x8244835C, 0x82448368, 0x82448374, 0x82448380, 0x8244838C, 0x82448398,
+    0x824483A8, 0x824482C0, 0x824482C0, 0x824482C0,
+]
+# sub_82848E00: a byte table with no bound in the code (index = [r31+744] - 1; lbzx, << 2, base 0x82848E48). The
+# generator read 99 entries and pulled the code after the function into it ("use of undeclared label loc_828491D0" in
+# the first build; its body was scrambled). The table is 16 bytes: the next table, at 0x820DD2E8, is sub_8284AAF8's
+# (`cmplwi cr6,r10,10` bounds that one). Entry 4 is 0x82848F50, the start of the next function: the case is a jump
+# there, emitted as a call and return.
+[[switch_tables]]
+address = 0x82848E44
+register = 11
+labels = [
+    0x82848E78, 0x82848E78, 0x82848E78, 0x82848E78, 0x82848F50, 0x82848E78, 0x82848E78, 0x82848E78,
+    0x82848E78, 0x82848E48, 0x82848E78, 0x82848E78, 0x82848E48, 0x82848E48, 0x82848E48, 0x82848E48,
+]

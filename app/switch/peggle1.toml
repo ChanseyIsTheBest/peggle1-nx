@@ -1,0 +1,264 @@
+# peggle2-nx settings for the Nintendo Switch - default settings: every enhancement on
+# Written by tools/make_enhancement_configs.py from app/src/peggle1_enhancements.cpp: edit the table there, not this
+# file. To use it: copy it to sdmc:/switch/peggle2-nx/ as peggle1.toml (the game reads only that name). The startup
+# log line "[enhancements]" says which enhancements were active.
+
+# The full game, not the trial: XBLA titles ask the console for their licence (0 would be the trial version). It
+# is also the program's default when the line is missing.
+license_mask = 1
+
+# Language: "en", "de", "fr", "es", "it" or "pt" (Brazilian Portuguese). Empty = English.
+peggle1_language = ""
+
+# Pictures a second: 30 = as the Xbox 360 game (a picture every second screen refresh), 60 = a picture every refresh.
+# The game runs at the same speed either way: it makes 60 logic steps a second and, with 60, draws after each one
+# instead of after every second one. A picture that is not ready in time takes two steps, as with 30. With 60 the log
+# has a "[fps]" line every 10 s (pictures and logic steps a second).
+peggle1_fps = 60
+
+# Local multiplayer. A second, third or fourth controller that joins a lobby is signed in as a guest of the profile,
+# as on the console (false: only controller 1 can play). With the game data pack that has the PS4 content the
+# lobby offers Windy and Jimmy too, in the PS4's layout of eight smaller buttons (peggle1_dlc_mp_masters = false:
+# the Xbox 360's lobby of five masters).
+xam_guest_signin = true
+peggle1_dlc_mp_masters = true
+
+# Single player, "Select a Master" (the screen a beaten level opens with). With the PS4 content: five masters in
+# the row, Jimmy, Windy and the random button in a second row as on the PS4, and Y steps through all six costumes
+# of a master (the two costume packs are the fifth and the sixth). false: the Xbox 360's screen (one row made for
+# five masters, four costumes).
+peggle1_dlc_master_select = true
+
+# Controllers (up to four: the handheld Joy-Cons, Pro Controllers, Joy-Con pairs, or single Joy-Cons held sideways).
+# Face buttons by position, as on the Xbox 360 pad the game was made for: the bottom button (B on Switch
+# controllers) is A, the right one (A) is B, the left one (Y) is X, the top one (X) is Y. false = by letter.
+input_xbox_layout = true
+# Single Joy-Cons are held sideways, one per player.
+input_joycon_sideways = true
+# Each player's own layout: which Switch buttons press an Xbox button, as a list of A B X Y L R ZL ZR PLUS MINUS
+# LSTICK RSTICK UP DOWN LEFT RIGHT SL SR, or NONE. Keys: input_p1_ to input_p4_ followed by a b x y lb rb lt rt start
+# back ls rs up down left right. Empty or missing = the default above. Examples (remove the # to use one):
+# input_p1_a = "B, ZR"          # player 1: B or ZR shoots
+# input_p2_lb = "L, SL"         # player 2: L or SL is the left bumper
+# input_p3_start = "PLUS, MINUS"
+
+# Renderer: the native Vulkan renderer (PM4 ring -> NVK). It needs peggle1_shaders.mesp (+ .idx) next to the NRO,
+# built from your own game files (tools/build_shader_library.sh). false = ReXGlue's emulated Xenos GPU: the reference
+# image, but far too slow on the console. An NRO built without the Vulkan driver (development builds since
+# 2026-10-20) ignores these two lines and runs Renut's renderer on deko3d (deko3d_glsl.bin next to the NRO).
+masseffect_renderer_native = true
+gpu_plugin = "xenos"
+
+# Logs go to logs/ next to the NRO. Please keep them after a test run.
+log_level = "info"
+log_to_file = true
+
+# ---- Profiler (on; not under the enhancement masters) ----
+switch_profile_stacks = true                            # console CPU sampler: 1 ms stack samples into logs/rex/rex_profile.log
+masseffect_gpu_marks_categories = true                  # GPU time per pass category and the idle gap ("GPU per Swap" lines)
+
+# ---- Enhancement masters (false turns every enhancement of that group off, whatever its own key says) ----
+peggle1_cpu_enhancements = true
+peggle1_noncpu_enhancements = true
+
+# ---- CPU enhancements (136) ----
+masseffect_wait_blocking_ring = true                    # gpu_wait_sleep: the game's GPU busy-wait (sub_8261D378) sleeps until the ring moves; native renderer only
+masseffect_native_wait_reg_mem_us = 1000                # wait_reg_mem_events: the ring's WAIT_REG_MEM parks until an interrupt, write pointer or swap (at most 1 ms); off = 50 us polling
+masseffect_native_deferred_recording = false            # ring_deferred_recording: a worker records the ring's Vulkan commands (NOT pixel-identical in futari-nx's lockstep)  (EXPLICIT ONLY: off unless you set it; see the known issues)
+masseffect_deferred_native_fast = false                 # ring_deferred_fast: the deferred queue is published every masseffect_deferred_native_batch commands  (EXPLICIT ONLY: off unless you set it; see the known issues)
+masseffect_deferred_native_update = false               # ring_deferred_update: descriptor set updates are queued to the worker too  (EXPLICIT ONLY: off unless you set it; see the known issues)
+masseffect_native_fingerprints_sampling = 0             # ring_fingerprint_sampling: stable textures rechecked by a sampled fingerprint (NOT exact: can miss a change)  (EXPLICIT ONLY: off unless you set it; see the known issues)
+masseffect_native_upload_memory = 1                     # ring_upload_cached: the upload buffer in CPU-cached memory, flushed before each submit (SA2 console: 2x the CPU write speed)
+masseffect_native_flat_identity = true                  # ring_flat_identity: shader identity lookups in a flat table (ME: 0.7-0.9 ms)
+masseffect_native_fast_pair = true                      # ring_fast_pair: fast VS/PS pairing (ME: 0.5-0.7 ms)
+masseffect_native_raw_microcode = true                  # ring_raw_microcode: microcode compared raw, without byte swapping (ME: 0.4-0.6 ms)
+masseffect_native_pm4_fast = true                       # ring_pm4_fast: runs of constant/fetch register writes handled four words at a time with NEON (ME: 0.4-0.8 ms)
+masseffect_notify_no_lock = true                        # ring_notify_no_lock: ring progress notified without taking the lock when nobody waits (ME: 0.2-0.4 ms)
+masseffect_native_compare_fast = true                   # ring_compare_fast: faster state comparisons (ME: 0.5 ms)
+masseffect_native_fast_copy = true                      # ring_fast_copy: vertex copies with the fast path, checked against the slow one for masseffect_native_fast_copy_verify draws
+masseffect_native_fingerprint_mode = 2                  # ring_fingerprint_crc32: fingerprints with the hardware CRC32 pair on the Switch (mode 2; XXH3 mode 1 on the PC)
+masseffect_native_dedupe_max_fingerprint = 16384        # ring_dedupe_large: vertex payloads up to 16 KB deduplicated by fingerprint (ME: XXH3 share of the ring 15 -> 9 %)
+masseffect_native_indices_cache = true                  # ring_indices_cache: converted index buffers cached
+masseffect_native_pipelines_prewarm = true              # ring_pipelines_prewarm: pipelines of earlier runs created at startup
+kernel_critsec_pcr_owner = true                         # critsec_pcr_owner: critical sections take their owner from the guest context (r13 -> KPCR) instead of a thread lookup
+thread_signal_skip_idle = true                          # thread_signal_skip_idle: no condition-variable notify (a syscall on Horizon) for an event or semaphore nobody is blocked on
+banjo_deko3d_push_constants = true                      # renut_push_constants: Renut: float and shared constants pushed into fixed uniform buffers
+banjo_deko3d_ring_cleaner = true                        # renut_ring_cleaner: Renut: the upload ring's cache clean on the background core
+banjo_renut_capture_pool = true                         # renut_capture_pool: Renut: queued draws' captures from a pool
+banjo_renut_cpu_memos = true                            # renut_cpu_memos: Renut: the render thread's per-draw lookups memoised (targets, textures, streams, memexport)
+banjo_renut_pipeline_memo = true                        # renut_pipeline_memo: Renut: a memo of the pipeline each key gave
+banjo_renut_shared_dedupe = true                        # renut_shared_dedupe: Renut: shared constants equal to the previous draw's not uploaded again
+banjo_renut_queue_notify_idle = true                    # renut_queue_notify_idle: Renut: queued work wakes the render thread only while it waits
+banjo_renut_record_worker = true                        # renut_record_worker: Renut: command recording split across two threads
+banjo_renut_pmull_hash = true                           # renut_pmull_hash: Renut (ARM): content hashes with PMULL folding
+banjo_renut_neon_swap = true                            # renut_neon_swap: Renut (ARM): vertex byte swaps 16 bytes per NEON reverse
+banjo_renut_upload_cached = true                        # renut_upload_cached: Renut (Switch): the upload ring in CPU-cached memory
+banjo_ring_core = 1                                     # renut_ring_core: Renut (Switch): the render thread pinned to core 1
+banjo_background_compile_core = 2                       # renut_compile_core: Renut (Switch): pipeline prewarm and specialisation threads pinned to core 2
+banjo_renut_record_worker_core = 0                      # renut_record_worker_core: Renut (Switch): the recording worker pinned to core 0
+sa2_renut_snapshot_deltas = true                        # renut_snapshot_deltas: Renut: a draw sends only the 64-byte device chunks and constant groups that changed, not the whole 13 KB device
+futari_renut_deferred_chain = true                      # renut_deferred_chain: Renut: Begin*Vertices draws (nearly all of Peggle 2's) in the delta chain too (futari-nx's)
+sa2_renut_snapshot_deltas_constants = true              # renut_snapshot_deltas_constants: Renut: the delta chain's draws push only their changed constant groups
+sa2_renut_snapshot_deltas_narrow = true                 # renut_snapshot_deltas_narrow: Renut: the delta chain compares only the 40 of 77 device chunks the render thread reads
+sa2_renut_neon_compare = true                           # renut_neon_compare: Renut (ARM): 64-byte lines compared with four 128-bit loads a side
+sa2_renut_capture_batches = true                        # renut_capture_batches: Renut: draw captures taken from and given back to their pool 32 at a time
+sa2_renut_callbacks_fast = true                         # renut_callbacks_fast: Renut: the hooks' first calls return without locks when nothing waits
+sa2_renut_wake_batch = 16                               # renut_wake_batch: Renut: a sleeping render thread woken by the game's draws once 16 are queued (other items and waits at once)
+sa2_renut_prefetch_next = true                          # renut_prefetch_next: Renut: the next draw's capture prefetched while the render thread does the one before
+sa2_renut_done_notify_waiters = true                    # renut_done_notify_waiters: Renut: the render thread's done signal only when a thread waits for it
+sa2_renut_batch_clock = true                            # renut_batch_clock: Renut: one clock read per batch of render-thread work, not per item
+sa2_renut_chain_reuse = true                            # renut_chain_reuse: Renut: a chain draw reuses the previous draw's key, targets, viewport, textures and pipeline when unchanged
+sa2_renut_inline_line_compare = true                    # renut_inline_line_compare: Renut: the shared constants' lines compared inline, not by memcmp calls
+sa2_renut_stream_mask = true                            # renut_stream_mask: Renut: vertex streams walked by a mask of the used ones
+sa2_renut_texture_defaults_copy = true                  # renut_texture_defaults_copy: Renut: the default texture and sampler words as one block copy
+sa2_renut_fetch_slots_skip = true                       # renut_fetch_slots_skip: Renut: shared-constant lines known equal (textures, fetch slots) not compared
+sa2_renut_fetch_data_unread = true                      # renut_fetch_data_unread: Renut: a draw that fetches nothing by address keeps the fetch address 0 (no upload a draw)
+sa2_renut_shared_partial_clear = true                   # renut_shared_partial_clear: Renut: only the shared constants after the texture words zeroed a draw
+sa2_renut_lean_diagnostics = true                       # renut_lean_diagnostics: Renut: the per-draw diagnostic counts only while their 10 s lines are logged
+sa2_renut_core_layout = true                            # renut_core_layout: Renut (Switch): the guest main thread alone on core 0, the other guest threads on cores 1-2 preferring 2
+peggle1_renut_texture_backoff = 32                      # renut_texture_backoff: Renut: an unchanged linear texture checked again after 2, 4 ... 32 frames (the native renderer's scheme)
+peggle1_renut_hd_async = true                           # renut_hd_async: Renut: the HD atlases read on a worker thread, not the render thread
+peggle1_cpu_guest_cas_no_barrier = true                 # guest_cas_no_barrier: Compare-and-swap (the game's interlocked operations, tools/guest_cas.py, and the SDK's lock words, rex/thread/atomic.h) without the legacy builtin's trailing dmb ish on the A57; off puts the barrier back at run time
+peggle1_cpu_hook_counter_shared = true                  # hook_counter_shared: Native replacements: one relaxed call counter per hook shared by all threads instead of a thread_local one (on the Switch every thread_local access is a call to __aarch64_read_tp, on every hooked call)
+peggle1_cpu_hook_counter_ctx = true                     # hook_counter_ctx: Native replacements: each hook's call counter lives in the calling thread's own context (PPCContext::host_counters) instead of one counter shared by all threads: no store into a cache line every calling thread pulls to its core, and still no thread_local
+peggle1_cpu_natives_smart_sync = true                   # natives_smart_sync: Native replacements: a localized copy's call writes back and reloads only the registers its callee can reach (smart sync, from sa2-nx; verify mode checks every such call) instead of all of them
+peggle1_cpu_ring_vs_mismatch_memo = true                # ring_vs_mismatch_memo: Ring thread: a (library candidate, loaded VS program) pair that failed the identity check once is remembered and not compared again (both are immutable: the loaded words are named by their XXH3 and size)
+peggle1_cpu_ring_identity_memo = true                   # ring_identity_memo: Ring thread: a directly paired draw with the same shader objects, object-table version and loaded VS/PS generations as the previous draw reuses its pairing and final VS/PS choice instead of running the identity checks again (both paths compared in verify mode)
+peggle1_cpu_note_shader_pair = true                     # note_shader_pair: Game thread: the draw hooks skip NoteShaderObject for a VS/PS pair whose objects are both finished (two table loads instead of two calls, four times per draw counting the shader-load hook)
+peggle1_api_ring_zero_ahead = true                      # api_ring_zero_ahead: Native Direct3D layer: free ring space ahead of the record head is allocated as zeroed cache lines (DC ZVA: no DRAM read before the record's stores) instead of write-prefetched; every zeroed block is checked to be free space in verify mode
+peggle1_cpu_note_shader_fast = true                     # note_shader_fast: Main thread, NoteShaderObject (twice per draw): the startup diagnostic stops taking its mutex once its 32 lines are written, and finished objects are remembered in one table shared by the game threads instead of a thread_local one (no TLS lookup per call)
+peggle1_cpu_ring_extent_key = true                      # ring_extent_key: Ring thread: the bounded-draw extent diagnostic dedupes on its five numbers instead of formatting a string key on every bounded draw (SA2 never fills its 32 slots, so it formatted forever)
+peggle1_cpu_ring_estimator_reason = true                # ring_estimator_reason: Ring thread: the draw-extent estimator keeps its reject reason as a pointer to the literal instead of a std::string (a heap allocation per call for reasons over 15 characters)
+peggle1_cpu_ring_rect_list_in_place = true              # ring_rect_list_in_place: Ring thread: a rect list of several rectangles is proven on the register file itself (the index offset set per rectangle and restored) instead of on an 80 KB copy of it
+peggle1_cpu_main_thread_priority = false                # main_thread_priority: Main thread: the thread that draws runs one priority step above the other game threads (no 10 ms time-slice waits behind them)  (EXPLICIT ONLY: off unless you set it; see the known issues)
+peggle1_cpu_ring_identity_accept_fast = true            # ring_identity_accept_fast: Ring thread: a VS candidate whose flat identity memo already says 'matches the loaded program' skips the mismatch memo's hash-set lookup (it can only hold pairs that did not match)
+peggle1_cpu_direct_state = true                         # direct_state: Direct renderer: Direct3D's per-draw state packets become a host record the ring applies with the same register functions at the same place in the stream (one NOP packet instead of ~14 to parse; self-checked)
+peggle1_cpu_direct_state_restore = true                 # direct_state_restore: Direct renderer: the ring writes the three words the marker NOP replaced back into the command buffer after applying the record, so the packets are as Direct3D wrote them (a range run twice, or a read back, sees the original PM4)
+peggle1_cpu_direct_state_refs = true                    # direct_state_refs: Direct renderer: the state record lists each packet's register and where its values are in the command buffer instead of copying and byte-swapping them on the game thread; the ring reads them in place (the packets the marker overwrites are still copied)
+peggle1_cpu_direct_flush = true                         # direct_flush: Direct renderer: inside a converted draw, Direct3D's flush of the shader constants, fetch constants and register groups writes the draw's record directly instead of PM4 packets the hook decodes again (one 3-word placeholder NOP in the command buffer; self-checked against the original function)
+peggle1_cpu_direct_pair = true                          # direct_pair: Direct renderer: a converted draw's Draw* record rides in its state record (no queue push on the game thread, no table lookup on the ring; a submission during the call pushes it as before; checked against the table in verify mode)
+peggle1_api_clears = false                              # api_clears: Native Direct3D Clear: the clear's state, shaders, vertices and draw as a record (no PM4)  (EXPLICIT ONLY: off unless you set it; see the known issues)
+peggle1_api_draws = true                                # api_draws: Native Direct3D draws: BeginVertices / DrawVerticesUP (with Direct3D's draw-time state flush and shader load) and the window-scissor writer as native code that writes the ring's records directly (no PM4 for the draw)
+peggle1_cpu_ring_bias_seen = true                       # ring_bias_seen: Ring thread: render-target exponent biases already logged are remembered in a small table instead of an unordered_set insert on every draw into such a target
+peggle1_cpu_ring_entry_hash = true                      # ring_entry_hash: Ring thread: the vertex-input cache key reuses the ring's XXH3 of the loaded VS instead of hashing the program again on every VS change (self-checked)
+peggle1_cpu_vertices_base_zero_r0 = true                # vertices_base_zero_r0: Ring and recording threads: draws whose vertex shader reads r0 also take the base-zero vertex binding (the upload buffer bound once, the draw shifted by firstVertex/vertexOffset), with the vertex index base compensated so r0 is unchanged
+peggle1_cpu_ring_bound_plan_memo = true                 # ring_bound_plan_memo: Ring thread: the draw's EDRAM bound-range plan (PlanEdramBoundRanges, a pure function of its request) is reused when the request equals the previous draw's
+peggle1_cpu_ring_dedupe_adaptive = true                 # ring_dedupe_adaptive: Ring thread: the vertex dedupe probes for 32 frames; with no hit it rests for 256 frames (the ranges are copied without fingerprints), then probes again
+peggle1_cpu_ring_compare_uploaded = true                # ring_compare_uploaded: Ring thread: constants and shared-block change tests read the uploaded block (CPU-cached memory) instead of keeping a second copy of every upload
+peggle1_cpu_lazy_trace_text = true                      # lazy_trace_text: Ring thread: format the EDRAM transfer-trace text only when a trace line is logged
+peggle1_cpu_ring_target_memo = true                     # ring_target_memo: Ring thread: render target and depth target lookups answered from a small memo of their inputs (the maps never drop an entry, so the same inputs always give the same image)
+peggle1_cpu_ring_redirect_key = true                    # ring_redirect_key: Ring thread: the depth-clear redirect's decline reasons are counted by number and formatted only for the report, not once per proven rectangle
+peggle1_cpu_ring_edram_memo = true                      # ring_edram_memo: Ring thread: a draw with the same render-target state as the previous draw reuses its EDRAM preparation (only when the full path would do no work: same images, tiles owned in the same epoch, nothing pending; self-checked against the full path)
+peggle1_cpu_native_memcpy = true                        # native_memcpy: Native CRT memcpy (sub_825F0AE0): host memcpy/memmove
+peggle1_cpu_native_memset = true                        # native_memset: Native CRT memset (sub_825F10B0): host memset
+peggle1_cpu_native_sub_823F5DF0 = true                  # native_sub_823F5DF0: localized copy of sub_823F5DF0: game code (4.1 % of the main thread)
+peggle1_cpu_native_sub_823F8380 = true                  # native_sub_823F8380: localized copy of sub_823F8380: game code (3.6 %)
+peggle1_cpu_native_sub_82151898 = true                  # native_sub_82151898: localized copy of sub_82151898: game code, leaf (3.3 %)
+peggle1_cpu_native_sub_823F6360 = true                  # native_sub_823F6360: localized copy of sub_823F6360: game code (3.3 %)
+peggle1_cpu_native_sub_824ACB08 = true                  # native_sub_824ACB08: localized copy of sub_824ACB08: game code (3.1 %)
+peggle1_cpu_native_sub_823E8D58 = true                  # native_sub_823E8D58: localized copy of sub_823E8D58: game code (2.8 %)
+peggle1_cpu_native_sub_823EACB8 = true                  # native_sub_823EACB8: localized copy of sub_823EACB8: game code (1.9 %)
+peggle1_cpu_native_sub_823EA2A0 = true                  # native_sub_823EA2A0: localized copy of sub_823EA2A0: game code (1.8 %)
+peggle1_cpu_native_sub_823F7660 = true                  # native_sub_823F7660: localized copy of sub_823F7660: game code (1.7 %)
+peggle1_cpu_native_sub_824A9E68 = true                  # native_sub_824A9E68: localized copy of sub_824A9E68: game code (1.3 %)
+peggle1_cpu_native_sub_823E9B98 = true                  # native_sub_823E9B98: localized copy of sub_823E9B98: game code (1.3 %)
+peggle1_cpu_native_sub_8214FC30 = true                  # native_sub_8214FC30: localized copy of sub_8214FC30: game code (1.2 %)
+peggle1_cpu_native_sub_821443E8 = true                  # native_sub_821443E8: localized copy of sub_821443E8: game code (1.2 %)
+peggle1_cpu_native_sub_8214F248 = true                  # native_sub_8214F248: localized copy of sub_8214F248: game code (1.1 %)
+peggle1_cpu_native_sub_82395590 = true                  # native_sub_82395590: localized copy of sub_82395590: game code (0.9 %)
+peggle1_cpu_native_sub_824CDE08 = true                  # native_sub_824CDE08: localized copy of sub_824CDE08: game code (0.9 %)
+peggle1_cpu_native_sub_82381988 = true                  # native_sub_82381988: localized copy of sub_82381988: game code (0.9 %)
+peggle1_cpu_native_sub_824A65A0 = true                  # native_sub_824A65A0: localized copy of sub_824A65A0: game code (0.7 %)
+peggle1_cpu_native_sub_824CF740 = true                  # native_sub_824CF740: localized copy of sub_824CF740: game code (0.7 %)
+peggle1_cpu_native_sub_823702C0 = true                  # native_sub_823702C0: localized copy of sub_823702C0: game code (0.6 %)
+peggle1_cpu_native_sub_825BE6A0 = true                  # native_sub_825BE6A0: localized copy of sub_825BE6A0: Wwise mixing, leaf (17.7 % of the audio thread)
+peggle1_cpu_native_sub_825BD0F8 = true                  # native_sub_825BD0F8: localized copy of sub_825BD0F8: Wwise mixing, leaf (6.7 %)
+peggle1_cpu_native_sub_825BCB88 = true                  # native_sub_825BCB88: localized copy of sub_825BCB88: Wwise (3.5 %)
+peggle1_cpu_native_sub_825BEED8 = true                  # native_sub_825BEED8: localized copy of sub_825BEED8: Wwise (2.6 %)
+peggle1_cpu_native_sub_8251A320 = true                  # native_sub_8251A320: localized copy of sub_8251A320: Wwise (2.4 %)
+peggle1_cpu_native_sub_8258E5E8 = true                  # native_sub_8258E5E8: localized copy of sub_8258E5E8: Wwise (2.0 %)
+peggle1_cpu_native_sub_82587C68 = true                  # native_sub_82587C68: localized copy of sub_82587C68: Wwise (1.7 %)
+peggle1_cpu_native_sub_8258E2C0 = true                  # native_sub_8258E2C0: localized copy of sub_8258E2C0: Wwise (1.7 %)
+peggle1_cpu_native_sub_825BF360 = true                  # native_sub_825BF360: localized copy of sub_825BF360: Wwise (1.6 %)
+peggle1_cpu_native_sub_8251EE08 = true                  # native_sub_8251EE08: localized copy of sub_8251EE08: Wwise (1.6 %)
+peggle1_cpu_native_sub_8251B120 = true                  # native_sub_8251B120: localized copy of sub_8251B120: Wwise (1.5 %)
+peggle1_cpu_native_sub_825B6D38 = true                  # native_sub_825B6D38: localized copy of sub_825B6D38: Wwise (1.5 %)
+peggle1_cpu_native_sub_8237F688 = true                  # native_sub_8237F688: localized copy of sub_8237F688: game code (0.9 % of the main thread with batch 1 on)
+peggle1_cpu_native_sub_82396150 = true                  # native_sub_82396150: localized copy of sub_82396150: game code (0.8 %)
+peggle1_cpu_native_sub_82396F28 = true                  # native_sub_82396F28: localized copy of sub_82396F28: game code (0.7 %)
+peggle1_cpu_native_sub_82399DC0 = true                  # native_sub_82399DC0: localized copy of sub_82399DC0: game code (0.5 %)
+peggle1_cpu_native_sub_823F5818 = true                  # native_sub_823F5818: localized copy of sub_823F5818: game code (0.4 %)
+peggle1_cpu_native_sub_824AA4C0 = true                  # native_sub_824AA4C0: localized copy of sub_824AA4C0: game code (0.4 %)
+peggle1_cpu_native_sub_8251F1B8 = true                  # native_sub_8251F1B8: localized copy of sub_8251F1B8: Wwise (1.3 % of the audio thread with batch 1 on)
+peggle1_cpu_native_sub_8258D408 = true                  # native_sub_8258D408: localized copy of sub_8258D408: Wwise (1.0 %)
+peggle1_cpu_native_sub_825B2DA0 = true                  # native_sub_825B2DA0: localized copy of sub_825B2DA0: Wwise (0.8 %)
+peggle1_cpu_native_sub_8251D108 = true                  # native_sub_8251D108: localized copy of sub_8251D108: Wwise (0.8 %)
+peggle1_cpu_native_sub_8251BDE8 = true                  # native_sub_8251BDE8: localized copy of sub_8251BDE8: Wwise (0.7 %)
+peggle1_cpu_native_sub_825BCC68 = true                  # native_sub_825BCC68: localized copy of sub_825BCC68: Wwise (0.6 %)
+peggle1_cpu_native_sub_82591E00 = true                  # native_sub_82591E00: localized copy of sub_82591E00: Wwise (0.5 %)
+peggle1_cpu_native_sub_825BF458 = true                  # native_sub_825BF458: localized copy of sub_825BF458: Wwise (0.5 %)
+peggle1_cpu_native_sub_825BA158 = true                  # native_sub_825BA158: localized copy of sub_825BA158: Wwise (0.4 %)
+
+# ---- Non-CPU enhancements (62) ----
+peggle1_native_edram4_clear_color0 = true               # edram4_clear_color0: a depth + color 0 clear drawn through a 4x alias is cleared in the 1x owners (no 4x draw and 4x -> 1x transfer)
+peggle1_native_constants_dedupe = true                  # constants_dedupe: a new shader-constant generation with the bytes uploaded last reuses that block (no upload, no rebind)
+peggle1_native_pass_narrow_end = true                   # pass_narrow_end: a render pass's end dependency names its real consumers instead of MEMORY_READ|WRITE
+peggle1_native_zcull_1x_depth = false                   # zcull_1x_depth: 1x depth views keep their ZCULL plane (copy-engine stencil imports use masked stencil passes)  (EXPLICIT ONLY: off unless you set it; see the known issues)
+masseffect_native_vs_relaxed_match = true               # vs_relaxed_match: vertex shaders whose fetch swizzles D3D patched are matched to the library
+asset_pack = true                                       # asset_pack: game data read from game_root.nxpack instead of the folder (used anyway when only the pack exists)
+banjo_deko3d_alpha_spec = true                          # renut_alpha_spec: Renut deko3d: the alpha test's function in the pipeline (constant 903)
+banjo_deko3d_tess_spec = true                           # renut_tess_spec: Renut deko3d: no tessellation code in pipelines without it (constant 904)
+banjo_deko3d_early_hoist = true                         # renut_early_hoist: Renut deko3d: the early alpha test's texture fetch hoisted
+banjo_deko3d_early_z = true                             # renut_early_z: Renut deko3d: depth tested before a discarding shader in a draw that writes no depth (constant 909)
+banjo_deko3d_txq_constants = true                       # renut_txq_constants: Renut deko3d: texture sizes from a buffer, not a texture query (constant 908)
+banjo_deko3d_vs_outputs = true                          # renut_vs_outputs: Renut deko3d: vertex shaders write only what the pixel shader reads
+banjo_deko3d_uam_prmt = true                            # renut_uam_prmt: Renut deko3d: uam's byte swaps as PRMT
+banjo_deko3d_uam_gvn = true                             # renut_uam_gvn: Renut deko3d: uam's global value numbering
+banjo_deko3d_uam_uniform_branches = true                # renut_uam_uniform_branches: Renut deko3d: uam's uniform branches without reconvergence
+banjo_deko3d_uam_wide_rows = true                       # renut_uam_wide_rows: Renut deko3d: uam's 128-bit bone-row loads
+banjo_deko3d_zcull = true                               # renut_zcull: Renut deko3d: hierarchical depth culling
+banjo_deko3d_depth_compression = true                   # renut_depth_compression: Renut deko3d: compressed depth targets
+banjo_deko3d_depth24 = true                             # renut_depth24: Renut deko3d: D24S8 targets as 24-bit depth
+banjo_deko3d_depth_handover = true                      # renut_depth_handover: Renut deko3d: a whole depth resolve handed over, not drawn
+banjo_deko3d_draw_resolves = true                       # renut_draw_resolves: Renut deko3d: colour resolves drawn on the 3D engine
+banjo_deko3d_barrier_lean = true                        # renut_barrier_lean: Renut deko3d: write-only transitions keep the texture cache
+banjo_deko3d_barrier_merge = true                       # renut_barrier_merge: Renut deko3d: back-to-back barriers merged
+banjo_gpu_depth_only = true                             # renut_depth_only: Renut: depth-only pipelines for colourless draws
+banjo_gpu_depth_words_view = true                       # renut_depth_words_view: Renut: a depth resolve's words read through its own texture
+banjo_gpu_output_trim = true                            # renut_output_trim: Renut: colour outputs a pipeline never writes trimmed
+banjo_gpu_bool_spec = true                              # renut_bool_spec: Renut: bool constants as specialisation constants
+banjo_gpu_tess_grid = true                              # renut_tess_grid: Renut: tessellated patches as a precomputed grid
+banjo_gpu_robustness_off = true                         # renut_robustness_off: Renut (Vulkan): pipelines without buffer and image robustness
+banjo_gpu_nvk_draw_contract = true                      # renut_nvk_draw_contract: Renut on NVK: NVK's per-draw contract
+banjo_gpu_blend_skip = true                             # renut_blend_skip: Renut: pixels whose blend changes nothing discarded
+banjo_renut_precise_barriers = true                     # renut_precise_barriers: Renut (Vulkan): barriers' access masks from the layouts
+banjo_renut_push_point_only = true                      # renut_push_point_only: Renut (Vulkan): the push constant read only by point sprites
+banjo_renut_resolve_skip = true                         # renut_resolve_skip: Renut: a resolve of an unchanged source into the same texture not done again
+banjo_renut_depth_words_lazy = true                     # renut_depth_words_lazy: Renut: a depth resolve's words written only when read
+banjo_renut_memory_policy = true                        # renut_memory_policy: Renut: memory limits sized for the console
+peggle1_renut_texture_cap_mb = 512                      # renut_texture_cap: Renut (deko3d): host textures above 512 MB released when not bound for 120 frames
+banjo_renut_pipeline_cache = true                       # renut_pipeline_cache: Renut (Vulkan): the driver's pipelines kept on disk
+banjo_renut_cache_save_quiet = true                     # renut_cache_save_quiet: Renut: the pipeline cache saved once no pipeline was built for a while
+banjo_renut_linked_stages = true                        # renut_linked_stages: Renut on NVK (Switch): each pipeline's stages compiled together
+banjo_deko3d_kick_submit = true                         # renut_kick_submit: Renut deko3d, input lag: command lists handed to the GPU at the game's kicks
+banjo_late_input = true                                 # renut_late_input: Renut, input lag: a frame's first controller read as late as the render thread's slack allows
+banjo_deko3d_eager_kicks = true                         # renut_eager_kicks: Renut deko3d, input lag: lists of 100 draws, up to 6 a frame, each sent to the GPU at its own kick
+banjo_display_sync = true                               # renut_display_sync: Renut on the Switch, input lag: the frame limiter paced by the display's vsync event (phase auto, at most 12 ms)
+peggle1_gpu_boost = true                                # boost: Handheld: ask for the official 460.8 MHz GPU profile (memory clock checked unchanged, else reverted)
+peggle1_native_dedupe_sync_epochs = true                # dedupe_sync_epochs: Ring thread: the vertex dedupe and the index cache forget their recorded ranges at every GPU-to-game signal in the command stream (fence and memory writes, interrupts), the guest synchronization they were designed around (its counter was never advanced)
+peggle1_gpu_lock_rechecks = true                        # lock_rechecks: The renderer reads a texture again at its next use when the game's loader has written it (or Direct3D announced a write lock of its memory); off = it waits for its recheck interval, so an atlas loaded into the previous level's memory shows the old image for up to 39 frames
+peggle1_gpu_video_after_draws = true                    # video_after_draws: The game's video update (which starts the next Bink decode into the picture the frame just drew) waits until the ring thread has recorded the draws submitted so far: the picture is read before the decoder writes it (no bars and spots of half-decoded blocks in videos)
+peggle1_vsync_relaxed = true                            # peggle1_vsync_relaxed: Relaxed vsync: the vblank that releases the game's flip follows its swap (at most one per 1/60 s after the previous vblank; the regular 1/60 s ticks otherwise), so a frame that misses 30 fps is shown when it is ready instead of at the next vblank: no fall from 30 straight to 20
+peggle1_gpu_hd_atlases = true                           # hd_atlases: GPU: atlases from the HD pack in place of the game's 720 atlases (peggle1_hd_atlases: docked only or always); needs peggle1_hd.pack next to the program
+peggle1_gpu_render_scale = true                         # render_scale: GPU: render at peggle1_render_height_handheld / peggle1_render_height_docked (720 / 1080 by default), following docked / handheld live; off = always the game's 1280x720
+peggle1_native_linear_fetch_not_resolved = true         # linear_fetch_not_resolved: Renderer: a linear (untiled) texture fetch is never taken for a resolved texture (resolves write tiled layouts only): CPU data at a freed resolve's address is read from guest memory instead of being rejected (Wild Canyon's mission box centre)
+peggle1_gpu_structured_cf = true                        # structured_cf: GPU: shaders whose forward-only control flow the translator proved equivalent as nested if/else run that form (SPEC_CONSTANT_STRUCTURED_CF) instead of an `if (skipTo <= pc)` test per CF instruction (needs the shader package that has it)
+peggle1_gpu_push_once = true                            # push_once: GPU: the push constants (three addresses the set-4 specialized shaders never read) are recorded once per pass / command buffer instead of on every draw whose constant offsets moved (NVK: one 6-word root-table upload per draw less)
+peggle1_gpu_texcoords_unswapped = true                  # texcoords_unswapped: GPU: vertex shaders skip the swapped-texcoord test of every texcoord input (a 64-bit mask test and a swizzle select per vertex): the native renderer never swaps them (g_SwappedTexcoords is always 0)
+peggle1_gpu_no_texture_signs = true                     # no_texture_signs: GPU: when no texture of a draw has a signed, biased or gamma component, its pixel shader skips the per-fetch sign test (a shift, a compare and a branch per texture fetch)
+peggle1_gpu_identity_remap = true                       # identity_remap: GPU: a pipeline whose vertex inputs all keep their component order (every g_InputRemap is 0xFFF) skips the per-input remap test in its vertex shader (a constant load, a compare and a branch per input)
+peggle1_gpu_index_base_held = true                      # index_base_held: GPU: vertex shaders the translator proved never read the vertex index run with r0 starting at 0 (SPEC_CONSTANT_VERTEX_INDEX_UNUSED) and the per-draw vertex index base is held at 0, so draws keep the same shared constant block and set-4 binding (needs the shader package that has it)
+peggle1_gpu_blend_skip = true                           # blend_skip: GPU: transparent pixels (alpha 0 or less with SRC_ALPHA / ONE_MINUS_SRC_ALPHA or additive blending, or an all-zero source with ONE / ONE_MINUS_SRC_ALPHA) are discarded before the blend when the blend would leave the RGBA8 target unchanged and nothing writes depth or stencil
+peggle1_gpu_resolve_draw = true                         # resolve_draw: GPU: same-format RGBA8 color resolves are drawn on the 3D engine (one fragment pass that copies the texels) instead of vkCmdCopyImage on NVK's copy engine (no engine switch and wait for idle per resolve)
+peggle1_gpu_resolve_alias = true                        # resolve_alias: GPU: a color resolve that repeats the previous one (same render target and rectangle, nothing in between) into another texture is not copied; that texture takes the bytes of the first one when something reads it or before the first one changes (a copy, or an exchange of the two images when the first one is overwritten whole). SA2's 1E8A0000 and 1F6F8000 are never read
+peggle1_native_partial_resolve_inside = true            # partial_resolve_inside: Renderer: a resolve is a later rectangle of an existing resolved texture only when it declares that texture's height (or the height left below its row) and its rectangle lies inside it; a whole texture allocated a few pages above a freed one of the same size gets its own texture instead of being written into the old one

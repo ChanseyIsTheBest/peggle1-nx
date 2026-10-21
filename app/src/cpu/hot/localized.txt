@@ -1,0 +1,39 @@
+# Guest functions replaced by localized copies (tools/localize_native.py), regenerated into app/generated/hot/ by
+# tools/codegen.ps1 and by the build after every codegen, so each copy matches the code it is built with. One per line:
+# <address> <what>
+#
+# peggle1-nx, batch 1 (2026-10-21, the user's request: "optimise 30 of the hottest functions"): the 30 hottest guest
+# functions by self time of the PC profile of 140 s of gameplay (out/renut_tests/prof1/pc_profile.log, windows 3-9,
+# Renut on Vulkan; tools/pc_hot_functions.py --guest), without WaitForSingleObjectEx (sub_82467B60: a wait), the
+# worker-pool loop sub_8270D0F8 (a wait) and memset sub_8279DF80 (hand-written native, Peggle 2's). None of Peggle 2's
+# 47 localized functions is in Peggle 1 (tools/p2_function_matches.py). Samples in the 140 s:
+82689D20 main thread (269 samples)
+8246C3F8 main thread (203)
+821B8090 main thread (192)
+82327F40 main thread (176)
+8227D590 main thread (163)
+82310720 main thread (157)
+821BD500 main thread (133)
+8227DC20 main thread (133)
+8227DE58 main thread (114)
+82688EE8 main thread (105)
+82634A98 main thread (102)
+821BD7D0 main thread (99)
+8232B450 main thread (92)
+8280A6C0 audio (81)
+82689258 main thread (71)
+82826CF0 audio (71)
+827478C8 main thread (70)
+8246D6A8 main thread (67)
+82817B40 audio (62)
+82310618 main thread (55)
+82747A38 main thread (next on the list, in place of 8231D050: an lwarx/stwcx. atomic, which the copies leave alone)
+8273D9E8 main thread (36)
+82822E40 audio (31)
+8246A878 main thread (30)
+8280A840 audio (28)
+82640808 main thread (25)
+8266B8C8 main thread (23)
+828150B0 audio (22)
+821D1AF8 main thread (19)
+82688900 main thread (18)

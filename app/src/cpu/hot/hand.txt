@@ -1,0 +1,6 @@
+8279B350 CRT memcpy: hand-written native n_825F0AE0.h (Peggle 2's address; Peggle 1's code is byte for byte the same) (reads r3, r4, r5; returns r3 and the slot at r1 - 8 as the original does)
+8279DF80 CRT memset: hand-written native n_825F10B0.h (Peggle 2's address; the same code) (reads r3, r4, r5)
+# The hand-written natives of the guest's own routines (peggle1_hot_guest.cpp, PEGGLE1_HOT_HOOK). tools/leaf_dead_stores.py
+# and tools/dead_ctx_defs.py (from banjo-nx) read the address first on each line: a call through one of these hooks
+# reads what the original reads, so it counts as a call of the original. Every other hooked call (the localized
+# copies, the port's own hooks) reads everything.

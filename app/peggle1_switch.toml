@@ -1,0 +1,11 @@
+# Peggle for the Nintendo Switch: your options. This file is written next to the NRO at the first start when there is
+# none; edit it there. Everything else is built into the NRO.
+
+# The game's language: "" (the console's system language; English when the game does not have it), en, ja, de,
+# fr, es, it, ko, zh or pt.
+peggle1_language = ""
+
+# Controllers: the Xbox button layout (A and B as on an Xbox pad: A is the right button), and a single Joy-Con held
+# sideways.
+input_xbox_layout = true
+input_joycon_sideways = true

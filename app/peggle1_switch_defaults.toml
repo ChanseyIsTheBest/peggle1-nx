@@ -1,0 +1,28 @@
+# Peggle (Xbox Live Arcade) for the Nintendo Switch: the settings built into the NRO (src/peggle1_app.h BuiltInConfig).
+# The SD card's peggle1.toml is applied after these and may override any of them.
+#
+# peggle1-nx (2026-10-21): written by hand for the first Switch builds. Peggle 2's file (PS4 content, HD packs, the
+# native renderer's keys) does not apply; tools/make_enhancement_configs.py will write this file again once it knows
+# Peggle 1. Every enhancement of src/peggle1_enhancements.cpp is on by its own default.
+
+# The full game, not the trial.
+license_mask = 1
+
+# Renut's Direct3D-level renderer on deko3d (the only renderer of the Switch build: no Vulkan driver is linked).
+peggle1_renderer = "renut"
+renut_gpu_backend = "deko3d"
+
+# No log (the release, 2026-10-21): no log lines, no log file, no logs/ folder, no stderr file, no deko3d.log and no
+# console profile file. Only a crash still writes logs/rex/rex_crash.log. A test run turns the log on in its SD toml
+# (log_level = "info", log_to_file = true).
+log_level = "off"
+log_to_file = false
+switch_profile_report = false
+switch_profile_stacks = false
+
+# Local multiplayer: the second controller's player signs in as a guest of the first (as Peggle 2's Duel needed).
+xam_guest_signin = true
+
+# The render height in each mode. 720 in both until the 1.5x scale is checked against Peggle 1's 82 shaders.
+peggle1_render_height_handheld = 720
+peggle1_render_height_docked = 720

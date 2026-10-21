@@ -1,0 +1,93 @@
+# Peggle (Xbox Live Arcade): code generation options for speed. Root keys: they must stay outside any table.
+#
+# peggle1-nx (2026-10-21): Peggle 2's set (out/to_delete/p2_configs/perf_overrides_peggle2.toml, its comments below),
+# stage 1: everything but non_argument_as_local and elide_lr_stores, whose keep lists are per game (stack probe, EH
+# dispatch and funclets, the callees whose return address a hook reads) and are made for Peggle 1 next. The
+# share_registers marks at the end come from tools/read_before_write.py on code generated with these options.
+#
+# They only change how the C++ is written, so the compiler can keep guest registers in host registers instead of the
+# PPCContext in memory and drop dead stores; what the guest sees is the same. The same generated code is used for the
+# PC and the Switch builds, so every change here is tested on the PC first (soak runs, recordings compared with
+# tools/compare_raw.py).
+#
+# The set measured on the console by the reference ports (nfsmw-nx docs/toolchain.md: ~14 % of the main thread was in
+# __savegprlr/__restgprlr; masseffect-nx perf_overrides.toml: about -13 % instructions):
+cr_as_local = true
+non_volatile_as_local = true
+xer_as_local = true
+ctr_as_local = true
+# 2026-10-07 (the user's 50-60 % CPU goal; the options sa2-nx's and futari-nx's optimised codegen ship): the lwarx
+# reservation as a C++ local; skip_msr (no mfmsr/mtmsrd fences, ctx.msr stores or global lock around the guest atomic
+# sequences: a stwcx. is already a compare-and-swap); dform_disp_split (D-form loads/stores as base + zext(reg) + disp:
+# differs only when reg + disp crosses 2^32, a guest fault either way); fctiwz_inline (fcvtzs + NaN select).
+# masseffect-nx measured skip_msr + reserved_as_local at -3.4 % total CPU.
+reserved_as_local = true
+skip_msr = true
+dform_disp_split = true
+fctiwz_inline = true
+# sa2-nx round 7 (its SDK change, taken 2026-10-07): no host flush-mode switch (an `msr fpcr` on AArch64, very slow on
+# the A57: SA2's VMX-heavy thread spent 20-26 % of its time right after one) for floating-point moves (lfd/stfd forms,
+# stfiwx, fmr, fabs, fnabs, fneg: bits only), and lfs/stfs in VMX mode convert through rex::ppc::SingleToDoubleAnyMode
+# / DoubleToSingleAnyMode (the IEEE result in either mode; denormal cases on a cold path with the mode cleared).
+fp_moves_modeless = true
+# 2026-10-13 (the user: sa2-nx's three CPU rounds of 2026-10-12; its SDK changes taken as a patch, docs/peggle1-notes.md):
+#   - fp_compares_modeless: float compares need no host flush mode (sasrt-nx's);
+#   - fp_mode_lookahead: a lookahead before each mode switch; WITHOUT the bet past a branch (sa2-nx measured that the
+#     any-mode forms on a bet cost 94,000 tests a frame to save nine switches);
+#   - fcti_inline: fctidz as fcvtzs + NaN select, and fctid / fctiw rounding halves to even on AArch64. A CORRECTION of
+#     the Switch build: simde's portable conversion is C round(), halves away from zero (10 fctid sites in Peggle 2;
+#     the PC build was always right);
+#   - fp_copy_pairs: an lfs directly followed by an stfs of the same register copies the bits without a mode (only
+#     where it replaces a switch for certain);
+#   - div_inline: divw / divwu / divd / divdu as the host instruction with one select (a constant divisor keeps the
+#     C expression).
+# Not taken: rotate_word_narrow (exact, but larger code with the Switch compiler), dcbt_prefetch (no measurement),
+# fp_copy_only_functions (a loss in sa2-nx).
+fp_compares_modeless = true
+fp_mode_lookahead = true
+fp_mode_lookahead_past_branch = false
+fcti_inline = true
+fp_copy_pairs = true
+div_inline = true
+# banjo-nx's codegen round (ported 2026-10-19; docs/peggle1-notes.md, "banjo-nx's codegen round"):
+#   - rotate_word_shifts: rlwinm / rlwimi whose mask does not wrap as the shift, extract or 32-bit rotate the mask
+#     makes of them (lsl / lsr / ubfiz / ubfx on the A57: one instruction where the 64-bit rotate of the duplicated
+#     word took two or three). 8,171 of Peggle's functions change; every rlwinm / rlwimi statement the generator
+#     writes was checked against the 64-bit definition (sdk/tests/rotate_word_test.cpp, and 54,370 sites of this
+#     tree: 0 differences);
+#   - fp_copy_forwarding: fp_copy_pairs' bit copies (no flush-mode switch) also where other instructions stand between
+#     the lfs and its stfs, and through in-place fneg / fabs / fnabs (none in Peggle): 5,328 copy-form stores, 9.6 %
+#     fewer flush-mode switch statements (each an msr fpcr on the A57);
+#   - setjmp_save_locals: a CORRECTION (sa2-nx's, always on in banjo-nx): at each of the 12 setjmp sites the
+#     non-volatile locals go into the jump buffer and come back after a longjmp; before, a local the function changed
+#     between setjmp and longjmp (libpng's error path) came back with an undefined value.
+# The generator's dcbt operand fix is in too (RA|0 + RB); dcbt_prefetch stays off (no measurement on the A57).
+rotate_word_shifts = true
+fp_copy_forwarding = true
+setjmp_save_locals = true
+# Left off for now: non_argument_as_local, elide_lr_stores (above), args_in_registers.
+#
+# Registers the game uses outside the ABI stay in ctx in every function (banjo-nx's generator key; its finding: Microsoft's
+# WMV decoder hands its assembly routines permute masks in v64/v65, and with them as zeroed locals every video was
+# garbage). Peggle 1 links the same decoder (XMEDIA): with registers as locals its PopCap logo video was garbage blocks
+# (2026-10-21, the first optimised build), and tools/read_before_write.py lists eight vector functions that read v64,
+# v65, v69 and v72 before writing them (below). The range covers them.
+non_volatile_as_local_keep = ["v64-v72"]
+
+[functions]
+# share_registers: split pieces and funclets that read r14-r31, cr, ctr or xer before writing them must share their
+# parent's registers. Found with tools/read_before_write.py on code generated with the options above (2026-10-21):
+#   python tools/read_before_write.py app/generated/default --noreturn=827A33E0,8279AAB0
+# (0x827A33E0 the guest longjmp, 0x8279AAB0 _CxxThrowException: both noreturn.) 23 functions:
+#   - sub_8246E474: the tail of sub_8246DC60 (the game's __try { RaiseException } wrapper), entered from the parent's
+#     body by beq / bne / beq; `mr r8,r8` scope markers, then `addi r12,r31,320` (the parent's frame). Peggle 2's
+#     sub_8231CEE4 exactly. Marked below.
+#   - harmless, not marked: sub_82310720 / sub_82317050 / sub_827A4B50 (setjmp) read cr1-cr7 only to save the CR;
+#     sub_824671F0 / sub_82467580 `xor r30,r30,r30`; the eight setjmp sites (sub_82644098, sub_82692F98, sub_826931E8,
+#     sub_826942C0, sub_82694468, sub_826947C0, sub_8272C2A8, sub_82736A58) store their locals into the jump buffer
+#     (setjmp_save_locals); sub_827BC6E4 is a data word (0x827BC710) after a blr that the generator took for a
+#     function, never called.
+#   - NOT harmless (first taken for saves): eight vector functions (sub_825A8260, 825A8898, 82925178, 82C5C8F8,
+#     82C5CCA0, 82C5CF60, 82C5D1C8, 82C5E720) read v64, v65, v69 and v72 that their callers set: the WMV decoder's
+#     registers outside the ABI. non_volatile_as_local_keep above.
+"0x8246E474" = { share_registers = true }
