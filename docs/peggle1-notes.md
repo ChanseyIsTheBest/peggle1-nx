@@ -269,7 +269,9 @@ Only the optimised-codegen NRO is delivered (the user's rule for every port). Pe
   `PEGGLE1_SWITCH_LTO` defaults to off), the game's own icon (`app/icon.jpg`, the user's exception), and no game shader
   inside: `-Define "PEGGLE1_RENUT_RELEASE_SHADERS=ON"` builds against `out/renut_switch_release` (the shader table
   without SPIR-V, no built-in package; Peggle 1 has no port shaders), so the NRO reads `deko3d_glsl.bin` beside itself.
-  The NRO is 40,519,640 bytes, without a `BDKG` package or a zstd frame.
+  The NRO is 40,536,134 bytes (SHA-256 `c91aec0c...dc6fa`), without a `BDKG` package or a zstd frame. Its icon was
+  replaced after the first upload by the user's 512x512 picture: the ELF and the NRO's code part are the same bytes,
+  only the asset section changed (the first upload, `7b654f69...`, had the 64x64 icon scaled up).
 - **The shaders of the release** are the native chain without early alpha (`out/deko3d_release`; only
   `ps_13D1F9C0BB97B49D` and `ps_30F9B5EF9AB1346A` differ from the development package), because the installer page
   does not port the early alpha pass. All 82 compile with uam.

@@ -106,5 +106,5 @@ The source rebuild workflow and wrapper are provided in `shaders/wasm/`.
 
 ## The icon
 
-`app/icon.jpg` is the game's own icon (its 64x64 `icon.png`, scaled up), © PopCap Games: the one piece of the game's
-art in this repository.
+`app/icon.jpg` is the game's own icon (a 512x512 picture of its icon art, scaled to 256x256), © PopCap Games: the one
+piece of the game's art in this repository.
