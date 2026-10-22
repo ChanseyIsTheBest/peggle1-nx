@@ -89,6 +89,7 @@ sideways, one per player. The Xbox Live modes are not available.
 | `peggle1_language` | Empty (default): the console's system language (English when the game does not have it). Or `en`, `ja`, `de`, `fr`, `es`, `it`, `ko`, `zh` (traditional Chinese) or `pt` |
 | `input_xbox_layout` | Face buttons by position (`true`, default) or by letter (`false`) |
 | `input_joycon_sideways` | Single Joy-Cons held sideways, one per player (`true`, default) |
+| `input_joycon_sideways_stick` | With it, a single Joy-Con's stick turned for the sideways grip (`true`, default) |
 
 </div>
 

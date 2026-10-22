@@ -307,3 +307,16 @@ Only the optimised-codegen NRO is delivered (the user's rule for every port). Pe
   (`xam_user.cpp`) was a stub that "returned" its first argument (title id 0: success) with the handle and buffer size
   unwritten; it now zeroes both and fails (`sub_822B02D8`, `sub_822B0500` stop on failure).
 - 1.0.1: version 1.0.1, the same release settings; NRO SHA-256 `2eb617f6...80f7`, ELF build id `891fac27...`.
+
+## 1.0.2: a sideways Joy-Con's stick (2026-10-22)
+
+- **The bug** (the user, after peggle2-nx 1.0.2 fixed the same code): a single Joy-Con held sideways
+  (`input_joycon_sideways`) moved the aim a quarter turn off: pushing right read as up. `hidSetNpadJoyHoldType(
+  HidNpadJoyHoldType_Horizontal)` turns the buttons for the system's own applets, but `padGetStickPos` still gives the
+  stick as the Joy-Con is built (up = towards its L / R button). The input driver was peggle2-nx 1.0.1's line for line.
+- **Fix** (`sdk/src/input/switch/switch_input_driver.cpp`, peggle2-nx `ec1a138`, from guwange-nx): `Poll` turns the
+  stick a quarter, the left Joy-Con's to `{-y, x}` (its top points left) and the right Joy-Con's to `{y, -x}` (its top
+  points right). New key `input_joycon_sideways_stick` (on by default; built in, not in the player's `peggle1.toml`).
+- 1.0.2: version 1.0.2, the same release settings (`out/nx_release`, no LTO / PGO, release shaders);
+  `check_switch_build.py` all checks passed. NRO SHA-256 `9d736aa1...36c6`, 40,540,230 bytes; ELF
+  `out/nx/elf/peggle1_release_1.0.2.elf`; delivered as `out/dist/release_1.0.2/peggle1-nx/`.

@@ -65,13 +65,21 @@ REX_INPUT_MAP_CVARS(p3, "Player 3");
 REX_INPUT_MAP_CVARS(p4, "Player 4");
 #undef REX_INPUT_MAP_CVARS
 
-// Single Joy-Cons (one per player, for multiplayer) are held sideways: the system is told so (it then turns the
-// stick for that grip), and the four buttons under the player's right thumb become the face buttons. SL and SR are
-// the triggers (ZL / ZR), the minus or plus button is Start, the stick is the left
+// Single Joy-Cons (one per player, for multiplayer) are held sideways: the system is told so, the stick is turned for
+// that grip (input_joycon_sideways_stick below), and the four buttons under the player's right thumb become the face
+// buttons. SL and SR are the triggers (ZL / ZR), the minus or plus button is Start, the stick is the left
 // stick. false = held upright (the system's default; no remapping).
 REXCVAR_DEFINE_BOOL(input_joycon_sideways, true, "Input",
                     "Single Joy-Cons are held sideways, one per player (face buttons, stick and SL/SR turned "
                     "accordingly)")
+    .lifecycle(rex::cvar::Lifecycle::kInitOnly);
+// peggle1-nx 1.0.2 (2026-10-22, peggle2-nx 1.0.2's fix, from guwange-nx): the horizontal hold type turns the
+// buttons' meaning for the system's own menus, but padGetStickPos still gives the stick as the Joy-Con is built
+// (up = towards its L / R button): held sideways a push to the right read as up. The stick is turned a quarter here.
+REXCVAR_DEFINE_BOOL(input_joycon_sideways_stick, true, "Input",
+                    "With input_joycon_sideways: a single Joy-Con's stick turned a quarter for the sideways grip (left "
+                    "Joy-Con: its top points left; right Joy-Con: its top points right); false = as the Joy-Con "
+                    "reports it")
     .lifecycle(rex::cvar::Lifecycle::kInitOnly);
 
 // Route recording for unattended test runs: the game's own pad input, written and played back here.
@@ -429,7 +437,8 @@ X_STATUS SwitchInputDriver::Setup() {
     return X_STATUS_UNSUCCESSFUL;
   }
   padConfigureInput(kPlayerCount, HidNpadStyleSet_NpadStandard);
-  // Single Joy-Cons are held sideways (input_joycon_sideways): the system then turns their stick for that grip.
+  // Single Joy-Cons are held sideways (input_joycon_sideways): the hold type is for the system's own applets; the
+  // stick still comes as the Joy-Con is built and Poll turns it (input_joycon_sideways_stick).
   if (REXCVAR_GET(input_joycon_sideways)) {
     hidSetNpadJoyHoldType(HidNpadJoyHoldType_Horizontal);
   }
@@ -578,16 +587,21 @@ void SwitchInputDriver::Poll(size_t index) {
   HidAnalogStickState left = padGetStickPos(&slot.pad, 0);
   HidAnalogStickState right = padGetStickPos(&slot.pad, 1);
   // A single Joy-Con held sideways (input_joycon_sideways): its presses as a two-handed controller's, and its one
-  // stick as the left stick (the right Joy-Con reports its stick as stick 1). The system already turned the stick.
+  // stick as the left stick (the right Joy-Con reports its stick as stick 1), turned a quarter for the grip
+  // (input_joycon_sideways_stick; the stick values are -32767..32767, so the negation stays in range).
   if (index != 0 && REXCVAR_GET(input_joycon_sideways)) {
     const uint32_t style = padGetStyleSet(&slot.pad);
     const uint32_t whole = HidNpadStyleTag_NpadJoyDual | HidNpadStyleTag_NpadFullKey | HidNpadStyleTag_NpadHandheld;
+    static const bool turn = REXCVAR_GET(input_joycon_sideways_stick);
     if (!(style & whole) && (style & HidNpadStyleTag_NpadJoyLeft)) {
       held = SidewaysLeftJoyCon(held);
+      // Its top (the L button) points left: the Joy-Con's up is left, its right (the rail) is up.
+      if (turn) left = HidAnalogStickState{-left.y, left.x};
       right = HidAnalogStickState{};
     } else if (!(style & whole) && (style & HidNpadStyleTag_NpadJoyRight)) {
       held = SidewaysRightJoyCon(held);
-      left = right;
+      // Its top (the R button) points right: the Joy-Con's up is right, its right (away from the rail) is down.
+      left = turn ? HidAnalogStickState{right.y, -right.x} : right;
       right = HidAnalogStickState{};
     }
   }
