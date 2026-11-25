@@ -67,6 +67,13 @@ endif()
 
 set(PEGGLE1_SOURCES
     src/main.cpp
+    # The game menu (2026-11-24; the ultimate base's ports 177-227, blur-nx's, as rr6-nx took them): A+B+X+Y+L+R on
+    # the Switch, F8 on the PC; the release toml's settings.
+    src/game_menu.cpp
+    src/peggle1_menu_rows.cpp
+    # The movie by FFmpeg (WMV3) on the host, and as H.265 on the Switch's NVDEC (2026-11-24; banjo-nx-ult's and
+    # culdcept-nx's): the XDK's WMV9 wrapper hooked.
+    src/peggle1_wmv_ffmpeg.cpp
     # Video recordings of the game image for testing (cvar peggle1_video_s; tools/make_video.sh makes the MP4).
     src/peggle1_capture.cpp
     # The game's frame counter for the recorder (hook on D3DDevice_Swap).
@@ -141,6 +148,59 @@ endif()
 # Link the SDK. Stage 3 draws with ReXGlue's Xenos GPU emulation; the native renderer replaces it later.
 rexglue_setup_target(peggle1 GPU_PLUGINS xenos)
 target_include_directories(peggle1 PRIVATE src)
+# peggle1-nx (2026-11-24, banjo-nx-ult's and culdcept-nx's, credit both): src/peggle1_wmv_ffmpeg.cpp calls FFmpeg's WMV3
+# decoder itself (the SDK's FFmpeg 4.4; sdk/thirdparty/FFmpeg/config.h switches it on: config_masseffect_wmv3.h).
+if(TARGET libavcodec)
+    target_link_libraries(peggle1 PRIVATE libavcodec libavutil)
+endif()
+# The installer's H.265 movie on the Switch's NVDEC (culdcept-nx's tools/switch/nxvideo, as banjo-nx-ult builds it):
+# devkitPro's switch-ffmpeg 7.1 (averne's nvtegra backend) linked with the shim into one object whose only global
+# symbols are nxv_*, so FFmpeg 7.1's names never meet the SDK's FFmpeg (XMA, WMV3). Built when devkitPro's FFmpeg has
+# nvtegra. An external object: outside LTO and PGO.
+if(REXGLUE_PLATFORM_SWITCH)
+    option(PEGGLE1_NXVIDEO "The movie's H.265 / NVDEC decoder (tools/switch/nxvideo)" ON)
+    set(_nxv_pl "${DEVKITPRO}/portlibs/switch")
+    if(PEGGLE1_NXVIDEO AND EXISTS "${_nxv_pl}/include/libavutil/hwcontext_nvtegra.h")
+        set(_nxv_src "${CMAKE_CURRENT_SOURCE_DIR}/../tools/switch/nxvideo")
+        set(_nxv_out "${CMAKE_CURRENT_BINARY_DIR}/nxvideo")
+        file(MAKE_DIRECTORY "${_nxv_out}")
+        set(_nxv_keep)
+        foreach(_s nxv_open nxv_decode nxv_flush nxv_close nxv_is_hw nxv_version nxv_stats nxv_options)
+            list(APPEND _nxv_keep "--keep-global-symbol=${_s}")
+        endforeach()
+        add_custom_command(OUTPUT "${_nxv_out}/nxvideo.o"
+            COMMAND "${CMAKE_C_COMPILER}" -O2 -ffunction-sections -fdata-sections -march=armv8-a+crc+crypto
+                    -mtune=cortex-a57 -mtp=soft -ftls-model=local-exec -fPIE -D__SWITCH__ -DNX -D_GNU_SOURCE
+                    "-I${_nxv_pl}/include" "-I${DEVKITPRO}/libnx/include" -c "${_nxv_src}/nxvideo.c" -o "${_nxv_out}/shim.o"
+            COMMAND "${CMAKE_LINKER}" -r -o "${_nxv_out}/full.o" "${_nxv_out}/shim.o"
+                    --start-group "${_nxv_pl}/lib/libavcodec.a" "${_nxv_pl}/lib/libavutil.a" --end-group
+            COMMAND "${CMAKE_OBJCOPY}" ${_nxv_keep} "${_nxv_out}/full.o" "${_nxv_out}/nxvideo.o"
+            DEPENDS "${_nxv_src}/nxvideo.c" "${_nxv_src}/nxvideo.h"
+            COMMENT "nxvideo: FFmpeg 7.1 with nvtegra in one object, only nxv_* global"
+            VERBATIM)
+        set_source_files_properties("${_nxv_out}/nxvideo.o" PROPERTIES EXTERNAL_OBJECT TRUE GENERATED TRUE)
+        target_sources(peggle1 PRIVATE "${_nxv_out}/nxvideo.o")
+        target_include_directories(peggle1 PRIVATE "${_nxv_src}")
+        target_compile_definitions(peggle1 PRIVATE PEGGLE1_NXVIDEO=1)
+        message(STATUS "nxvideo: H.265 / NVDEC movies (devkitPro's switch-ffmpeg with nvtegra)")
+    endif()
+endif()
+# blur-nx (2026-11-18, the game menu's font option; the ultimate base's port 178): Dear ImGui's misc/fonts as byte
+# arrays (game_menu_fonts.h). Their licences: NOTICES.
+set(_blur_menu_fonts_dir "${REXSDK_DIR}/thirdparty/imgui/misc/fonts")
+set(_blur_menu_fonts_text "// Made by app/CMakeLists.txt from ${_blur_menu_fonts_dir} (do not edit).\n#pragma once\n")
+foreach(_pair "kMenuFontProggyTiny:ProggyTiny.ttf" "kMenuFontRoboto:Roboto-Medium.ttf" "kMenuFontKarla:Karla-Regular.ttf"
+              "kMenuFontCousine:Cousine-Regular.ttf")
+    string(REPLACE ":" ";" _parts "${_pair}")
+    list(GET _parts 0 _var)
+    list(GET _parts 1 _file)
+    file(READ "${_blur_menu_fonts_dir}/${_file}" _hex HEX)
+    string(REGEX REPLACE "([0-9a-f][0-9a-f])" "0x\\1," _hex "${_hex}")
+    string(APPEND _blur_menu_fonts_text "alignas(4) static const unsigned char ${_var}[] = {${_hex}};\n")
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_blur_menu_fonts_dir}/${_file}")
+endforeach()
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/game_menu_fonts/game_menu_fonts.h" "${_blur_menu_fonts_text}")
+target_include_directories(peggle1 PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/game_menu_fonts")
 
 # 2026-10-19: Renut's Direct3D-level renderer (reNut by masterspike52, as banjo-nx carries it, with its plume deko3d
 # back end): peggle1_renderer = "renut" at boot. No PM4 ring, no EDRAM model (cmake/peggle1_renut_gpu.cmake).
@@ -572,7 +632,7 @@ if(REXGLUE_PLATFORM_SWITCH)
     # tools/switch_hot_functions.py and the console profiler's samples. It must come from the same build as the NRO.
     target_link_options(peggle1 PRIVATE "LINKER:-Map=${CMAKE_BINARY_DIR}/peggle1.map")
     # The homebrew menu's entry: name, author, version and icon (app/icon.jpg, 256x256 JPEG).
-    set(PEGGLE1_VERSION "1.0.2" CACHE STRING "NRO display version" FORCE)
+    set(PEGGLE1_VERSION "1.0.3" CACHE STRING "NRO display version" FORCE)
     # peggle1-nx (2026-10-21): app/icon.jpg is the game's own icon (the user's 512x512 picture of it, 256x256 on black), the
     # one piece of the game's art in the repository (the user's exception for the icon).
     set(_peggle1_icon "")

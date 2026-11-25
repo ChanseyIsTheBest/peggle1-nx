@@ -19,6 +19,13 @@
 
 namespace rex::input::nx {
 
+// blur-nx (2026-11-18, the game menu): the per-player button maps built again from input_p1_* ... input_p4_* (set those
+// first); Poll uses them from its next call. Any thread.
+void RebuildButtonMaps();
+// blur-nx (2026-11-18): the buttons that open the game menu from now on, as input_menu_combo writes them ("L+R+MINUS");
+// false (nothing changed) when the text is not two or more known buttons. Any thread.
+bool SetGameMenuCombo(const std::string& text);
+
 // Polls the pads directly from HID shared memory on the calling guest thread.
 // Unlike the SDL driver it needs no window and no UI-thread event pump.
 //

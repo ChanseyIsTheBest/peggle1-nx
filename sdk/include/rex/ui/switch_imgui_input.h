@@ -131,6 +131,18 @@ inline void Stick(ImGuiIO& io, ImGuiKey top, ImGuiKey bottom, ImGuiKey left,
 
 // Translates a HID reading into ImGui events. ImGui discards events that repeat
 // the previous state, so it can be called every frame.
+// The buttons of an L+R+... shortcut still held ('read': the buttons now, 0 without a gamepad). blur-nx (2026-11-18): out of
+// ApplyEntry, so that the frames ImGuiDrawer skips (no dialog shows) keep it too.
+inline void TrackShortcuts(uint64_t read, StateUiEntry& state) {
+  constexpr uint64_t kModifier = kButtonL | kButtonR;
+  constexpr uint64_t kOfShortcut =
+      kButtonTop | kButtonBottom | kButtonLeft | kButtonRight | kButtonZL;
+  if ((read & kModifier) == kModifier) {
+    state.of_shortcut |= read & kOfShortcut;
+  }
+  state.of_shortcut &= read;
+}
+
 inline void ApplyEntry(ImGuiIO& io, const UiEntry& e, StateUiEntry& state) {
   if (e.connected_gamepad) {
     io.BackendFlags |= ImGuiBackendFlags_HasGamepad;
@@ -147,13 +159,7 @@ inline void ApplyEntry(ImGuiIO& io, const UiEntry& e, StateUiEntry& state) {
   // start the A/B tests. The driver only sees them when the game polls the gamepad, and the menu
   // changes later, on the UI thread; meanwhile the held D-pad would repeat here and move the focus.
   // They stay excluded even if L or R is released before them.
-  constexpr uint64_t kModifier = kButtonL | kButtonR;
-  constexpr uint64_t kOfShortcut =
-      kButtonTop | kButtonBottom | kButtonLeft | kButtonRight | kButtonZL;
-  if ((read & kModifier) == kModifier) {
-    state.of_shortcut |= read & kOfShortcut;
-  }
-  state.of_shortcut &= read;
+  TrackShortcuts(read, state);  // blur-nx (2026-11-18): the lines that were here (also run on the frames ImGui skips)
   const uint64_t b = read & ~state.of_shortcut;
 
   // Y is not passed to ImGui. The left face button is ImGui's menu button: held, it opens the window

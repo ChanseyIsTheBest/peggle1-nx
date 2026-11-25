@@ -270,6 +270,13 @@ class XmaContext {
 
   memory::RingBuffer PrepareOutputRingBuffer(XMA_CONTEXT_DATA* data);
   int PrepareDecoder(int sample_rate, bool is_two_channel);
+  // culdcept-nx (2026-11-20; the ultimate base's port 259, ultimate base media (2026-11-24)): a frame of a NAME.xmop (rex/filesystem/
+  // xmo.h: its packet has a tag) gets its 512 samples from the sound's Opus stream instead of FFmpeg. `packet` is the
+  // frame's packet and `frame_offset` its first bit in it. -1: not such a frame (decode it as XMA); 1: raw_frame_
+  // holds its samples (silence when they could not be had).
+  struct XmoState;
+  XmoState* xmo_ = nullptr;
+  int DecodeXmoFrame(const uint8_t* packet, uint32_t frame_offset, bool stereo);
   void PreparePacket(uint32_t frame_size, uint32_t frame_padding);
   bool DecodePacket(AVCodecContext* av_context, const AVPacket* av_packet, AVFrame* av_frame);
 

@@ -48,6 +48,12 @@
 REXCVAR_DEFINE_STRING(content_backup_root, "", "Kernel",
                       "Folder where a copy of each save is left, with one subfolder per profile. "
                       "Empty = nothing is copied");
+// katamari-nx (2026-11-01): DLC kept from the game without uninstalling it (the user: Beautiful Katamari's packs that
+// only unlock what the game unlocks by itself take the fun out of unlocking it). The app's katamari_dlc_unlock_packs
+// adds those packs' names; anything listed here is left out of the game's DLC list, and emptying it shows them again.
+REXCVAR_DEFINE_STRING(dlc_hidden, "", "Kernel",
+                      "DLC packages the game is not shown: display names or package file names, separated by ';' "
+                      "(any case). They stay installed. Empty = every installed package is shown");
 
 namespace rex {
 namespace system {
@@ -82,6 +88,24 @@ std::string SafeName(const std::string_view original) {
     clean.pop_back();
   }
   return clean.empty() ? std::string("no_name") : clean;
+}
+
+// Whether dlc_hidden names this package, by its display name or its file name.
+bool DlcHidden(const XCONTENT_DATA& data) {
+  const std::string display = rex::string::to_utf8(data.display_name());
+  const std::string file = data.file_name();
+  std::string_view list = REXCVAR_GET(dlc_hidden);
+  while (!list.empty()) {
+    const size_t end = list.find(';');
+    std::string_view name = list.substr(0, end);
+    list = end == std::string_view::npos ? std::string_view{} : list.substr(end + 1);
+    while (!name.empty() && name.front() == ' ') name.remove_prefix(1);
+    while (!name.empty() && name.back() == ' ') name.remove_suffix(1);
+    if (!name.empty() && (rex::string::utf8_equal_case(name, display) || rex::string::utf8_equal_case(name, file))) {
+      return true;
+    }
+  }
+  return false;
 }
 
 // What is inside a container, for the log. It is the line that says whether the save has data or not.
@@ -198,12 +222,26 @@ void CopyForTheUser(const std::string_view name, const std::filesystem::path& so
 
 ContentPackage::ContentPackage(KernelState* kernel_state, const std::string_view root_name,
                                const XCONTENT_AGGREGATE_DATA& data,
-                               const std::filesystem::path& package_path)
+                               const std::filesystem::path& package_path,
+                               const std::filesystem::path& package_file)
     : kernel_state_(kernel_state), root_name_(root_name), package_path_(package_path), license_(0) {
   device_path_ = fmt::format("\\Device\\Content\\{0}\\", ++content_device_id_);
   content_data_ = data;
 
   auto fs = kernel_state_->file_system();
+  // rr6-nx (2026-11-18): a DLC package read in place (ContentManager::RegisterPackageFile): its files as the package
+  // holds them, read only, nothing unpacked. If it cannot be read, the folder as before.
+  if (!package_file.empty()) {
+    auto stfs = std::make_unique<rex::filesystem::StfsContainerDevice>(device_path_, package_file);
+    if (stfs->Initialize()) {
+      fs->RegisterDevice(std::move(stfs));
+      fs->RegisterSymbolicLink(root_name_ + ":", device_path_);
+      from_package_file_ = true;
+      return;
+    }
+    REXSYS_ERROR("[dlc] '{}': its package {} could not be read; the folder {} is used", data.file_name(),
+                 rex::path_to_utf8(package_file), rex::path_to_utf8(package_path));
+  }
   auto device = std::make_unique<rex::filesystem::HostPathDevice>(device_path_, package_path, false,
                                                                   /*allow_share_delete=*/true);
   device->Initialize();
@@ -314,8 +352,11 @@ std::vector<XCONTENT_AGGREGATE_DATA> ContentManager::ListContent(uint32_t device
     }
 
     XCONTENT_AGGREGATE_DATA content_data;
-    if (XSUCCEEDED(ReadContentHeaderFile(rex::path_to_utf8(file_info.name), xuid, title_id,
-                                         content_type, content_data))) {
+    // mk9-nx (2026-10-28; port 56): == X_ERROR_SUCCESS, not XSUCCEEDED: its Win32 errors (X_ERROR_FILE_NOT_FOUND is 2)
+    // pass XSUCCEEDED, so a package without a header file (DLC put in place by hand) was listed from an uninitialised
+    // record (no name, type 5A000000) and the game could not open it.
+    if (ReadContentHeaderFile(rex::path_to_utf8(file_info.name), xuid, title_id, content_type,
+                              content_data) == X_ERROR_SUCCESS) {
       result.emplace_back(std::move(content_data));
     } else {
       content_data.device_id = device_id;
@@ -326,6 +367,32 @@ std::vector<XCONTENT_AGGREGATE_DATA> ContentManager::ListContent(uint32_t device
       content_data.xuid = xuid;
       result.emplace_back(std::move(content_data));
     }
+  }
+
+  // rr6-nx (2026-11-18): DLC read in place has its header and no folder of unpacked files: listed from the header,
+  // in the order registered (the DLC installer's), after any listed from folders. Only for the content with no user
+  // (DLC is installed for xuid 0; the game also lists its profile's, which has none).
+  if (content_type == XContentType::kMarketplaceContent && xuid == 0) {
+    auto global_lock = global_critical_region_.Acquire();
+    for (const auto& [name, file] : package_files_) {
+      if (std::any_of(result.begin(), result.end(),
+                      [&name](const XCONTENT_AGGREGATE_DATA& e) { return e.file_name() == name; })) {
+        continue;
+      }
+      XCONTENT_AGGREGATE_DATA content_data;
+      if (ReadContentHeaderFile(name, xuid, title_id, content_type, content_data) == X_ERROR_SUCCESS) {
+        result.emplace_back(std::move(content_data));
+      }
+    }
+  }
+
+  if (content_type == XContentType::kMarketplaceContent && !REXCVAR_GET(dlc_hidden).empty()) {
+    std::erase_if(result, [](const XCONTENT_AGGREGATE_DATA& entry) {
+      if (!DlcHidden(entry)) return false;
+      REXSYS_INFO("[dlc] '{}' ({}) hidden (dlc_hidden)", rex::string::to_utf8(entry.display_name()),
+                  entry.file_name());
+      return true;
+    });
   }
 
   // What the game sees when it asks for the list of saves. If a profile that exists on disk does not show
@@ -344,16 +411,54 @@ std::vector<XCONTENT_AGGREGATE_DATA> ContentManager::ListContent(uint32_t device
 std::unique_ptr<ContentPackage> ContentManager::ResolvePackage(
     const std::string_view root_name, uint64_t xuid, const XCONTENT_AGGREGATE_DATA& data) {
   auto package_path = ResolvePackagePath(xuid, data);
-  if (!std::filesystem::exists(package_path)) {
+  const auto package_file = PackageFileOf(data);  // rr6-nx (2026-11-18): DLC read in place
+  if (package_file.empty() && !std::filesystem::exists(package_path)) {
     return nullptr;
   }
-  auto package = std::make_unique<ContentPackage>(kernel_state_, root_name, data, package_path);
+  auto package = std::make_unique<ContentPackage>(kernel_state_, root_name, data, package_path, package_file);
   return package;
 }
 
 bool ContentManager::ContentExists(uint64_t xuid, const XCONTENT_AGGREGATE_DATA& data) {
+  if (!PackageFileOf(data).empty()) {  // rr6-nx (2026-11-18): DLC read in place
+    return true;
+  }
   auto path = ResolvePackagePath(xuid, data);
   return std::filesystem::exists(path);
+}
+
+void ContentManager::RegisterPackageFile(const std::string& file_name,
+                                         const std::filesystem::path& package_file) {
+  auto global_lock = global_critical_region_.Acquire();
+  for (auto& [name, file] : package_files_) {
+    if (name == file_name) {
+      file = package_file;
+      return;
+    }
+  }
+  package_files_.emplace_back(file_name, package_file);
+}
+
+std::filesystem::path ContentManager::PackageFileOf(const XCONTENT_AGGREGATE_DATA& data) {
+  if (data.content_type != XContentType::kMarketplaceContent) {
+    return {};
+  }
+  const std::string name = data.file_name();
+  std::filesystem::path found;
+  {
+    auto global_lock = global_critical_region_.Acquire();
+    for (const auto& [n, file] : package_files_) {
+      if (n == name) {
+        found = file;
+        break;
+      }
+    }
+  }
+  std::error_code ec;
+  if (found.empty() || !std::filesystem::is_regular_file(found, ec)) {
+    return {};
+  }
+  return found;
 }
 
 X_RESULT ContentManager::WriteContentHeaderFile(uint64_t xuid, XCONTENT_AGGREGATE_DATA data,
@@ -470,7 +575,8 @@ X_RESULT ContentManager::OpenContent(const std::string_view root_name, uint64_t 
   }
 
   auto package_path = ResolvePackagePath(xuid, data);
-  if (!std::filesystem::exists(package_path)) {
+  const auto package_file = PackageFileOf(data);  // rr6-nx (2026-11-18): DLC read in place
+  if (package_file.empty() && !std::filesystem::exists(package_path)) {
     REXSYS_WARN("[save] open '{}': {} does not exist", data.file_name(),
                 rex::path_to_utf8(package_path));
     return X_ERROR_FILE_NOT_FOUND;
@@ -478,8 +584,13 @@ X_RESULT ContentManager::OpenContent(const std::string_view root_name, uint64_t 
   // What the game will find inside. If this says EMPTY and the profile is then reported as damaged, the
   // failure was in saving; if it lists the files with their sizes, the failure is in reading them or in
   // the contents themselves.
-  REXSYS_INFO("[save] open '{}' (root {}) in {} -> {}", data.file_name(), root_name,
-              rex::path_to_utf8(package_path), ThatHasInside(package_path));
+  if (!package_file.empty()) {
+    REXSYS_INFO("[save] open '{}' (root {}) from its package {} (read in place)", data.file_name(), root_name,
+                rex::path_to_utf8(package_file));
+  } else {
+    REXSYS_INFO("[save] open '{}' (root {}) in {} -> {}", data.file_name(), root_name,
+                rex::path_to_utf8(package_path), ThatHasInside(package_path));
+  }
   auto package = ResolvePackage(root_name, xuid, data);
   assert_not_null(package);
   package->LoadPackageLicenseMask(ResolvePackageHeaderPath(
@@ -510,7 +621,13 @@ X_RESULT ContentManager::CloseContent(const std::string_view root_name) {
   // The path and name are recorded before destroying the package, which is what holds them.
   const std::filesystem::path path = package->package_path();
   const std::string name = package->GetPackageContentData().file_name();
+  const bool from_package_file = package->from_package_file();
   delete package;  // unmounts the guest drive: from here on the files are in place
+
+  if (from_package_file) {  // rr6-nx (2026-11-18): DLC read in place, read only: nothing to look at or copy
+    REXSYS_INFO("[save] close '{}' (root {}): its package", name, root_name);
+    return X_ERROR_SUCCESS;
+  }
 
   REXSYS_INFO("[save] close '{}' (root {}) in {} -> {}", name, root_name,
               rex::path_to_utf8(path), ThatHasInside(path));
@@ -758,7 +875,7 @@ static X_RESULT ExtractEntry(rex::filesystem::Entry* entry,
   return X_ERROR_SUCCESS;
 }
 
-X_RESULT ContentManager::InstallContent(const std::filesystem::path& package_path) {
+X_RESULT ContentManager::InstallContent(const std::filesystem::path& package_path, bool extract_files) {
   if (!std::filesystem::exists(package_path)) {
     return X_ERROR_FILE_NOT_FOUND;
   }
@@ -790,21 +907,23 @@ X_RESULT ContentManager::InstallContent(const std::filesystem::path& package_pat
 
   auto install_path = ResolvePackagePath(0, content_data);
 
-  // Create destination directory
-  std::error_code ec;
-  std::filesystem::create_directories(install_path, ec);
-  if (ec) {
-    return X_ERROR_ACCESS_DENIED;
-  }
-
-  // Extract all files breadth-first
-  auto* root = device->ResolvePath("");
-  if (!root) {
-    return X_ERROR_ACCESS_DENIED;
-  }
-
+  // rr6-nx (2026-11-18): read in place, the package's files stay in it: only the header below.
   std::queue<rex::filesystem::Entry*> queue;
-  queue.push(root);
+  if (extract_files) {
+    // Create destination directory
+    std::error_code ec;
+    std::filesystem::create_directories(install_path, ec);
+    if (ec) {
+      return X_ERROR_ACCESS_DENIED;
+    }
+
+    // Extract all files breadth-first
+    auto* root = device->ResolvePath("");
+    if (!root) {
+      return X_ERROR_ACCESS_DENIED;
+    }
+    queue.push(root);
+  }
 
   while (!queue.empty()) {
     auto* entry = queue.front();

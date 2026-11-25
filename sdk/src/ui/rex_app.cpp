@@ -290,6 +290,9 @@ bool ReXApp::ConstructRuntime(const PathConfig& paths) {
     auto* input_sys = static_cast<rex::input::InputSystem*>(runtime_->input_system());
     if (input_sys) {
       input_sys->SetActiveCallback([this]() {
+        // blur-nx (2026-11-18): an application's full-screen menu (the game menu) owns every button while it is up.
+        if (rex::ui::GameInputBlocked())
+          return false;
         if (!debug_overlay_ && !console_overlay_ && !settings_overlay_ && !achievements_overlay_)
           return true;
 #if REX_PLATFORM_SWITCH

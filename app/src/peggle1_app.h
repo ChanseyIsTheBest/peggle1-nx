@@ -15,6 +15,11 @@
 #include <rex/rex_app.h>
 #include <rex/runtime.h>
 
+#include "game_menu.h"  // blur-nx (2026-11-18, via the ultimate base and rr6-nx): the game menu (A+B+X+Y+L+R, F8)
+namespace peggle1 {
+void RegisterMenuRows();  // peggle1_menu_rows.cpp (2026-11-24): the release toml's rows on the menu's Settings tab
+}
+
 #if PEGGLE1_NATIVE_RENDERER
 #include "me/me_native_system.h"
 #include "me/peggle1_render_mode.h"
@@ -88,6 +93,23 @@ class Peggle1App : public rex::ReXApp {
   void OnWindowFocusChanged(bool focused) override {
     if (!focused) peggle1::pgo::DumpNow();
   }
+
+  // blur-nx (2026-11-18): the game menu's fonts (the console's own shared font) in the SDK drawer's atlas.
+  void OnConfigureFonts(ImFontAtlas* atlas) override { blur::AddGameMenuFonts(atlas); }
+
+  void OnCreateDialogs(rex::ui::ImGuiDrawer* drawer) override {
+#if PEGGLE1_RENUT_RENDERER
+    // katamari-nx (2026-11-01): the app's dialogs draw with the ImGui inside this executable, whose context only
+    // Renut's overlay drawer creates; under the SDK's presenter they would draw into no context at all.
+    if (!banjo::renut_gpu::Active()) return;
+#endif
+    // blur-nx (2026-11-18): the game menu. Attached for good (its constructor adds it), it asks for no ImGui frame
+    // while closed (WantsFrame).
+    peggle1::RegisterMenuRows();  // before the menu is first drawn
+    game_menu_ = std::make_unique<blur::GameMenuDialog>(drawer, config_path(), [this] { return runtime(); },
+                                                        [this] { return immediate_drawer(); });
+  }
+  std::unique_ptr<blur::GameMenuDialog> game_menu_;  // blur-nx (2026-11-18)
 
   void OnPostInitLogging() override {
     // The runtime defaults to no GPU plugin: select ReXGlue's Xenos implementation, keeping an explicit
@@ -254,6 +276,10 @@ class Peggle1App : public rex::ReXApp {
 #endif
 
   void OnShutdown() override {
+    // The PopCap ports (2026-11-24): the game menu first, while the ImGui drawer and Renut's ImGui context still exist
+    // (ReXApp::OnDestroy frees the drawer right after OnShutdown, before this class's members go; the menu's destructor
+    // then read the freed drawer and faulted on the way out).
+    game_menu_.reset();
 #if PEGGLE1_RENUT_RENDERER
     if (banjo::renut_gpu::Active()) renut::gpu::ShutdownRenderer();
 #endif

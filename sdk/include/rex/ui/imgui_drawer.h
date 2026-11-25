@@ -52,6 +52,10 @@ class ImGuiDrawer : public WindowInputListener, public UIDrawer {
   // UI thread can skip the round trip entirely.
   bool HasDialogs() const { return !dialogs_.empty(); }
 
+  // blur-nx (2026-11-18): the font atlas made again (the default font and the app's FontSetupCallback) before the next
+  // frame, and uploaded; the old texture is freed a few frames later. UI thread (a dialog's OnDraw, say).
+  void RequestFontRebuild() { font_rebuild_ = true; }
+
   // SetPresenter may be called from the destructor.
   void SetPresenter(Presenter* new_presenter);
   void SetImmediateDrawer(ImmediateDrawer* new_immediate_drawer);
@@ -78,6 +82,8 @@ class ImGuiDrawer : public WindowInputListener, public UIDrawer {
   void Initialize();
 
   void SetupFontTexture();
+  void AddFontsToAtlas();  // blur-nx (2026-11-18): the default font and the app's, into GetIO().Fonts
+  void RebuildFonts();     // blur-nx (2026-11-18): between frames (RequestFontRebuild)
 
   void RenderDrawLists(ImDrawData* data, UIDrawContext& ui_draw_context);
 
@@ -113,6 +119,9 @@ class ImGuiDrawer : public WindowInputListener, public UIDrawer {
   // Resources specific to an immediate drawer - must be destroyed before
   // detaching the presenter.
   std::unique_ptr<ImmediateTexture> font_texture_;
+  // blur-nx (2026-11-18): font textures replaced by RebuildFonts, kept until the GPU is surely past them (frames left).
+  std::vector<std::pair<std::unique_ptr<ImmediateTexture>, int>> retired_font_textures_;
+  bool font_rebuild_ = false;
 
   // If there's an active pointer, the ImGui mouse is controlled by this touch.
   // If it's TouchEvent::kPointerIDNone, the ImGui mouse is controlled by the

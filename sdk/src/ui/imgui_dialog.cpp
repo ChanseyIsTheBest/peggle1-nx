@@ -15,8 +15,17 @@
 
 #include <imgui.h>
 
+#include <atomic>
+
 namespace rex {
 namespace ui {
+
+// blur-nx (2026-11-18, the game menu): imgui_dialog.h.
+namespace {
+std::atomic<bool> g_game_input_blocked{false};
+}  // namespace
+void SetGameInputBlocked(bool blocked) { g_game_input_blocked.store(blocked, std::memory_order_release); }
+bool GameInputBlocked() { return g_game_input_blocked.load(std::memory_order_acquire); }
 
 ImGuiDialog::ImGuiDialog(ImGuiDrawer* imgui_drawer) : imgui_drawer_(imgui_drawer) {
   imgui_drawer_->AddDialog(this);

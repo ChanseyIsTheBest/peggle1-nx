@@ -11,6 +11,9 @@
 
 #pragma once
 
+#include <cstdint>
+#include <string>
+
 #include <rex/cvar.h>
 
 REXCVAR_DECLARE(bool, headless);
@@ -18,6 +21,12 @@ REXCVAR_DECLARE(bool, log_high_frequency_kernel_calls);
 REXCVAR_DECLARE(uint32_t, license_mask);
 REXCVAR_DECLARE(uint32_t, user_country);
 REXCVAR_DECLARE(uint32_t, user_language);
+REXCVAR_DECLARE(std::string, language);  // blur-nx (2026-11-18): xam_user.cpp
+namespace rex::system {
+// blur-nx (2026-11-18): the language the game is told (XGetLanguage, XCONFIG_USER_LANGUAGE, the achievements' strings):
+// the language key ("System" = the console's own, mapped to the Xbox 360's list), else user_language. Taken once.
+uint32_t EffectiveLanguage();
+}  // namespace rex::system
 REXCVAR_DECLARE(bool, kernel_pix);
 REXCVAR_DECLARE(std::string, cl);
 REXCVAR_DECLARE(bool, kernel_debug_monitor);

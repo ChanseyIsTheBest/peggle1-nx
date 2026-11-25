@@ -20,6 +20,8 @@
 
 #include <rex/cvar.h>
 #include <rex/filesystem.h>
+#include <rex/filesystem/lz4_blocks.h>
+#include <rex/filesystem/xmo.h>
 #include <rex/logging.h>
 #include <rex/math.h>
 #include <rex/string.h>
@@ -40,7 +42,9 @@ namespace rex::filesystem {
 
 namespace {
 
-constexpr uint32_t kPackVersion = 2;
+// sa2-nx-ult (2026-11-24): version 3 (pack_device.h), what Build and the web installers write; 2 still loads.
+constexpr uint32_t kPackVersion = 3;
+constexpr uint32_t kPackVersionOld = 2;
 constexpr uint32_t kMaxEntries = 100000;
 constexpr uint64_t kMaxPathsSize = 64ull << 20;
 constexpr size_t kCacheSize = 64 * 1024;       // asset_pack.c PACK_CACHE_SIZE
@@ -74,6 +78,36 @@ struct DiskEntry {
 static_assert(sizeof(PackHeader) == 40, "asset_pack.c PackHeader layout");
 static_assert(sizeof(IndexHeader) == 56, "asset_pack.c IndexHeader layout");
 static_assert(sizeof(DiskEntry) == 24, "asset_pack.c DiskEntry layout");
+// sa2-nx-ult (2026-11-24): version 3's entry, version 2's and the size the game sees.
+struct DiskEntry3 {
+  uint64_t offset;
+  uint64_t size;
+  uint32_t path_offset;
+  uint32_t path_length;
+  uint64_t guest_size;
+};
+static_assert(sizeof(DiskEntry3) == 32, "version 3's DiskEntry layout");
+
+// What an entry of a version-3 pack stands for: NAME.lz4b, NAME.xmop or NAME.xmop.lz4b for NAME (`plain`).
+struct StandIn {
+  bool lz4 = false, xmop = false;
+  std::string plain;  // the guest's name (the path without the suffixes); the path itself for a plain file
+  bool any() const { return lz4 || xmop; }
+};
+StandIn StandInOf(std::string_view path) {
+  StandIn s;
+  std::string_view n = path;
+  if (HasLz4BlocksSuffix(n)) {
+    s.lz4 = true;
+    n.remove_suffix(kLz4BlocksSuffix.size());
+  }
+  if (HasXmopSuffix(n)) {
+    s.xmop = true;
+    n.remove_suffix(kXmopSuffix.size());
+  }
+  s.plain = std::string(n);
+  return s;
+}
 
 uint64_t Fnv(uint64_t hash, const void* data, size_t size) {
   const auto* bytes = static_cast<const uint8_t*>(data);
@@ -134,6 +168,7 @@ class PackStorageFile final : public PackStorage {
 struct LoadedIndex {
   IndexHeader header{};
   std::vector<DiskEntry> entries;
+  std::vector<uint64_t> guest_sizes;  // sa2-nx-ult: version 3's, one per entry (empty for version 2)
   std::vector<char> paths;
 };
 
@@ -155,7 +190,8 @@ bool LoadIndex(const std::filesystem::path& pack_path, const std::filesystem::pa
   if (!f) return *error = "the asset index cannot be opened", false;
   IndexHeader& h = out->header;
   bool ok = pack_read && std::fread(&h, sizeof(h), 1, f) == 1 && !std::memcmp(pack.magic, "SSNXPAK1", 8) &&
-            !std::memcmp(h.magic, "SSNXIDX1", 8) && pack.version == kPackVersion && h.version == kPackVersion &&
+            !std::memcmp(h.magic, "SSNXIDX1", 8) &&
+            (pack.version == kPackVersion || pack.version == kPackVersionOld) && h.version == pack.version &&
             pack.pack_id == h.pack_id && pack.file_size == pack_size && pack.data_checksum == h.data_checksum &&
             h.pack_size == pack_size && h.count && h.count <= kMaxEntries && h.paths_size &&
             h.paths_size <= kMaxPathsSize;
@@ -163,18 +199,32 @@ bool LoadIndex(const std::filesystem::path& pack_path, const std::filesystem::pa
     std::fclose(f);
     return *error = "the asset pack header is invalid", false;
   }
-  const uint64_t entries_size = uint64_t(h.count) * sizeof(DiskEntry);
+  const bool v3 = h.version == kPackVersion;  // sa2-nx-ult (2026-11-24): 32-byte entries with the guest's size
+  const size_t entry_bytes = v3 ? sizeof(DiskEntry3) : sizeof(DiskEntry);
+  const uint64_t entries_size = uint64_t(h.count) * entry_bytes;
   if (sizeof(IndexHeader) + entries_size + h.paths_size != index_size) {
     std::fclose(f);
     return *error = "the asset index size is invalid", false;
   }
-  out->entries.resize(h.count);
+  std::vector<uint8_t> raw(static_cast<size_t>(entries_size));
   out->paths.resize(size_t(h.paths_size));
-  ok = std::fread(out->entries.data(), 1, size_t(entries_size), f) == entries_size &&
+  ok = std::fread(raw.data(), 1, raw.size(), f) == raw.size() &&
        std::fread(out->paths.data(), 1, out->paths.size(), f) == out->paths.size();
   std::fclose(f);
   if (!ok) return *error = "the asset index cannot be read", false;
-  uint64_t checksum = Fnv(kFnvBasis, out->entries.data(), size_t(entries_size));
+  uint64_t checksum = Fnv(kFnvBasis, raw.data(), raw.size());
+  out->entries.resize(h.count);
+  if (v3) {
+    out->guest_sizes.resize(h.count);
+    for (uint32_t i = 0; i < h.count; ++i) {
+      DiskEntry3 e3;
+      std::memcpy(&e3, raw.data() + size_t(i) * sizeof(DiskEntry3), sizeof(e3));
+      out->entries[i] = {e3.offset, e3.size, e3.path_offset, e3.path_length};
+      out->guest_sizes[i] = e3.guest_size;
+    }
+  } else {
+    std::memcpy(out->entries.data(), raw.data(), raw.size());
+  }
   checksum = Fnv(checksum, out->paths.data(), out->paths.size());
   if (checksum != h.checksum) return *error = "the asset index checksum is invalid", false;
   for (uint32_t i = 0; i < h.count; ++i) {
@@ -189,6 +239,100 @@ bool LoadIndex(const std::filesystem::path& pack_path, const std::filesystem::pa
     }
   }
   return true;
+}
+
+// sa2-nx-ult (2026-11-21): a range of the pack as a FileHandle (the readers' input).
+class PackRangeHandle final : public FileHandle {
+ public:
+  PackRangeHandle(PackStorage* storage, uint64_t offset, uint64_t size, const std::filesystem::path& name)
+      : FileHandle(name), storage_(storage), offset_(offset), size_(size) {}
+  bool Read(size_t file_offset, void* buffer, size_t buffer_length, size_t* out_bytes_read) override {
+    *out_bytes_read = 0;
+    if (file_offset >= size_) return buffer_length == 0;
+    const size_t n = size_t(std::min<uint64_t>(buffer_length, size_ - file_offset));
+    if (!storage_->ReadAt(offset_ + file_offset, buffer, n)) return false;
+    *out_bytes_read = n;
+    return n == buffer_length;
+  }
+  bool Write(size_t, const void*, size_t, size_t* out_bytes_written) override {
+    *out_bytes_written = 0;
+    return false;
+  }
+  bool SetLength(size_t) override { return false; }
+  void Flush() override {}
+
+ private:
+  PackStorage* storage_;
+  uint64_t offset_, size_;
+};
+
+// sa2-nx-ult (2026-11-21): a file read through a FileHandle (a stand-in's reader).
+class PackHandleFile final : public File {
+ public:
+  PackHandleFile(uint32_t file_access, Entry* entry, std::unique_ptr<FileHandle> handle)
+      : File(file_access, entry), handle_(std::move(handle)) {}
+  void Destroy() override { delete this; }
+  X_STATUS ReadSync(std::span<uint8_t> buffer, size_t byte_offset, size_t* out_bytes_read) override {
+    *out_bytes_read = 0;
+    const size_t size = entry()->size();
+    if (byte_offset >= size) return X_STATUS_END_OF_FILE;
+    const size_t n = std::min(buffer.size(), size - byte_offset);
+    size_t got = 0;
+    if (!handle_->Read(byte_offset, buffer.data(), n, &got)) return X_STATUS_UNSUCCESSFUL;
+    *out_bytes_read = got;
+    return X_STATUS_SUCCESS;
+  }
+  X_STATUS WriteSync(std::span<const uint8_t>, size_t, size_t*) override { return X_STATUS_ACCESS_DENIED; }
+  X_STATUS SetLength(size_t) override { return X_STATUS_ACCESS_DENIED; }
+
+ private:
+  std::unique_ptr<FileHandle> handle_;
+};
+
+// The size of the file an .lz4b holds, from its 32-byte header ("RXLZ4BLK", version, block size, u64 size).
+bool Lz4BlocksSizeFromHeader(const uint8_t* h, uint64_t* out_size) {
+  if (std::memcmp(h, "RXLZ4BLK", 8) != 0) return false;
+  std::memcpy(out_size, h + 16, sizeof(*out_size));
+  return true;
+}
+
+// The PopCap ports (2026-11-24): a stand-in's reader over its range of the pack. NAME.lz4b: OpenLz4Blocks with the
+// stored size; NAME.xmop: OpenXmop with it; NAME.xmop.lz4b: the .lz4b opened first, then OpenXmop with the size
+// its header gives. The handle carries the stored name without .lz4b once it is unpacked, which is also the name
+// xmo.cpp opens it by again for a sound's Opus data (OpenStandIn, SetXmoSourceOpener).
+struct StandInRange {
+  PackStorage* storage = nullptr;
+  uint64_t offset = 0, size = 0;
+  bool lz4 = false;
+};
+std::unique_ptr<FileHandle> OpenRange(const StandInRange& r, const std::filesystem::path& name,
+                                      uint64_t* inner_size) {
+  *inner_size = r.size;
+  auto handle = std::make_unique<PackRangeHandle>(r.storage, r.offset, r.size, name);
+  if (!r.lz4) return handle;
+  uint8_t header[32];
+  if (!(r.size >= sizeof(header) && r.storage->ReadAt(r.offset, header, sizeof(header)) &&
+        Lz4BlocksSizeFromHeader(header, inner_size))) {
+    REXFS_ERROR("[pack] {}: not a valid .lz4b", rex::path_to_utf8(name));
+    return nullptr;
+  }
+  return OpenLz4Blocks(std::move(handle), r.size);  // nullptr (logged) when not an .lz4b
+}
+
+// Every mounted NAME.xmop[.lz4b], by the name its reader carries (xmo.cpp's Registered::path).
+std::mutex g_xmop_mutex;
+std::unordered_map<std::string, StandInRange> g_xmop_ranges;
+
+std::unique_ptr<FileHandle> OpenStandIn(const std::filesystem::path& path) {
+  StandInRange r;
+  {
+    std::lock_guard<std::mutex> lock(g_xmop_mutex);
+    auto it = g_xmop_ranges.find(rex::path_to_utf8(path));
+    if (it == g_xmop_ranges.end()) return nullptr;
+    r = it->second;
+  }
+  uint64_t inner = 0;
+  return OpenRange(r, path, &inner);
 }
 
 }  // namespace
@@ -211,6 +355,18 @@ X_STATUS PackEntry::Open(uint32_t desired_access, File** out_file) {
   if (desired_access & (FileAccess::kFileWriteData | FileAccess::kFileAppendData)) {
     REXFS_ERROR("Attempting to open {} for write access on the read-only asset pack", path());
     return X_STATUS_ACCESS_DENIED;
+  }
+  if (lz4_blocks_ || xmop_) {
+    // sa2-nx-ult (2026-11-24): a stored NAME.lz4b of NAME read through OpenLz4Blocks; the PopCap ports (2026-11-24):
+    // a stored NAME.xmop[.lz4b] through OpenXmop (its name without .lz4b: see OpenRange).
+    const std::filesystem::path name =
+        rex::to_path(std::string(path()) + (xmop_ ? std::string(kXmopSuffix) : std::string(kLz4BlocksSuffix)));
+    uint64_t inner_size = 0;
+    auto handle = OpenRange({pack_->storage(), data_offset_, stored_size_, lz4_blocks_}, name, &inner_size);
+    if (handle && xmop_) handle = OpenXmop(std::move(handle), inner_size);  // logs why not
+    if (!handle) return X_STATUS_NO_SUCH_FILE;
+    *out_file = new PackHandleFile(desired_access, this, std::move(handle));
+    return X_STATUS_SUCCESS;
   }
   // A folder opens too (games open directories to enumerate them); reads on it are rejected in ReadSync.
   *out_file = new PackFile(desired_access, this);
@@ -316,8 +472,14 @@ bool PackDevice::Initialize() {
     parent->children_.push_back(std::unique_ptr<Entry>(entry));
     return entry;
   };
-  for (const DiskEntry& disk : index.entries) {
-    const std::string path(index.paths.data() + disk.path_offset, disk.path_length);
+  // sa2-nx-ult (2026-11-24): in version 3 every stand-in's size is the index's guest size, so no header is read
+  // here; version 2's entries are all plain files.
+  size_t packed = 0, sounds = 0;
+  for (size_t i = 0; i < index.entries.size(); ++i) {
+    const DiskEntry& disk = index.entries[i];
+    std::string path(index.paths.data() + disk.path_offset, disk.path_length);
+    const StandIn s = index.guest_sizes.empty() ? StandIn{} : StandInOf(path);
+    if (s.any()) path = s.plain;
     PackEntry* parent = root_entry_.get();
     size_t start_part = 0;
     for (size_t slash = path.find('/'); slash != std::string::npos; slash = path.find('/', start_part)) {
@@ -331,10 +493,28 @@ bool PackDevice::Initialize() {
     }
     PackEntry* file = make(parent, path.substr(start_part), false);
     file->data_offset_ = disk.offset;
-    file->size_ = size_t(disk.size);
-    file->allocation_size_ = rex::round_up(size_t(disk.size), size_t(bytes_per_sector()));
+    file->stored_size_ = disk.size;
+    const uint64_t size = index.guest_sizes.empty() ? disk.size : index.guest_sizes[i];
+    if (s.any()) {
+      file->lz4_blocks_ = s.lz4;
+      file->xmop_ = s.xmop;
+      if (s.lz4) ++packed;
+      if (s.xmop) {
+        ++sounds;
+        std::lock_guard<std::mutex> lock(g_xmop_mutex);
+        // the name PackEntry::Open gives the reader (the entry's guest path, '\' separators), which xmo.cpp registers
+        g_xmop_ranges[rex::path_to_utf8(rex::to_path(std::string(file->path()) + std::string(kXmopSuffix)))] = {
+            storage_.get(), disk.offset, disk.size, s.lz4};
+        SetXmoSourceOpener(&OpenStandIn);
+      }
+    }
+    file->size_ = size_t(size);
+    file->allocation_size_ = rex::round_up(size_t(size), size_t(bytes_per_sector()));
   }
   entry_count_ = index.entries.size();
+  if (packed || sounds)
+    REXFS_INFO("[pack] version {}: {} files as LZ4 / ZXC blocks (NAME.lz4b), {} sound files as Opus (NAME.xmop)",
+               index.header.version, packed, sounds);
   REXFS_INFO("[pack] mounted '{}' at {}: {} files, {} directories, {:.1f} MB in {:.1f} ms",
              rex::path_to_utf8(PackPath(folder_)), mount_path(), entry_count_, directories.size() - 1,
              double(index.header.pack_size) / (1024.0 * 1024.0),
@@ -372,6 +552,10 @@ bool PackDevice::Build(const std::filesystem::path& folder, std::string* error,
     item.path = rex::path_to_utf8(std::filesystem::relative(it->path(), folder, ec));
     std::replace(item.path.begin(), item.path.end(), '\\', '/');
     item.size = it->file_size(ec);
+    if (StandInOf(item.path).any()) {  // the PopCap ports (2026-11-24): the web installer makes the pack itself
+      return *error = "the game folder holds the web installer's compressed files (the first: " + item.path +
+                      "): copy its game_root.nxpack and .nxidx instead", false;
+    }
     if (ec || !ValidRelative(item.path.c_str(), item.path.size())) {
       return *error = "the game folder cannot be enumerated (" + item.path + ")", false;
     }
@@ -469,11 +653,12 @@ bool PackDevice::Build(const std::filesystem::path& folder, std::string* error,
   const bool header_ok = rex::filesystem::Seek(out, 0, SEEK_SET) && std::fwrite(&header, sizeof(header), 1, out) == 1;
   if (std::fclose(out) != 0 || !header_ok) return fail("the asset pack cannot be finalized");
 
-  std::vector<DiskEntry> entries(items.size());
+  std::vector<DiskEntry3> entries(items.size());  // sa2-nx-ult (2026-11-24): version 3
   std::vector<char> paths;
   paths.reserve(size_t(paths_size));
   for (size_t i = 0; i < items.size(); ++i) {
-    entries[i] = {items[i].offset, items[i].size, uint32_t(paths.size()), uint32_t(items[i].path.size())};
+    entries[i] = {items[i].offset, items[i].size, uint32_t(paths.size()), uint32_t(items[i].path.size()),
+                  items[i].size};
     paths.insert(paths.end(), items[i].path.begin(), items[i].path.end());
     paths.push_back(0);
   }
@@ -484,11 +669,11 @@ bool PackDevice::Build(const std::filesystem::path& folder, std::string* error,
   index.pack_id = pack_id;
   index.pack_size = pack_size;
   index.paths_size = paths.size();
-  index.checksum = Fnv(Fnv(kFnvBasis, entries.data(), entries.size() * sizeof(DiskEntry)), paths.data(), paths.size());
+  index.checksum = Fnv(Fnv(kFnvBasis, entries.data(), entries.size() * sizeof(DiskEntry3)), paths.data(), paths.size());
   index.data_checksum = data_checksum;
   out = rex::filesystem::OpenFile(temp_index, "wb");
   const bool index_ok = out && std::fwrite(&index, sizeof(index), 1, out) == 1 &&
-                        std::fwrite(entries.data(), sizeof(DiskEntry), entries.size(), out) == entries.size() &&
+                        std::fwrite(entries.data(), sizeof(DiskEntry3), entries.size(), out) == entries.size() &&
                         std::fwrite(paths.data(), 1, paths.size(), out) == paths.size();
   if (!out || std::fclose(out) != 0 || !index_ok) return fail("the asset index cannot be written");
 

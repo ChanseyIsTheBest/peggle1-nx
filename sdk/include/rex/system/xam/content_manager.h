@@ -118,8 +118,11 @@ static_assert_size(XCONTENT_AGGREGATE_DATA, 0x148);
 
 class ContentPackage {
  public:
+  // rr6-nx (2026-11-18): 'package_file', when given, is an Xbox 360 package mounted as it is (read in place, read
+  // only); otherwise the folder 'package_path' is mounted.
   ContentPackage(KernelState* kernel_state, const std::string_view root_name,
-                 const XCONTENT_AGGREGATE_DATA& data, const std::filesystem::path& package_path);
+                 const XCONTENT_AGGREGATE_DATA& data, const std::filesystem::path& package_path,
+                 const std::filesystem::path& package_file = {});
   ~ContentPackage();
 
   void LoadPackageLicenseMask(const std::filesystem::path header_path);
@@ -130,11 +133,15 @@ class ContentPackage {
 
   uint32_t GetPackageLicense() const { return license_; }
 
+  // rr6-nx (2026-11-18): mounted from its package file, not from a folder.
+  bool from_package_file() const { return from_package_file_; }
+
  private:
   KernelState* kernel_state_;
   std::string root_name_;
   std::string device_path_;
   std::filesystem::path package_path_;
+  bool from_package_file_ = false;
   XCONTENT_AGGREGATE_DATA content_data_;
   uint32_t license_ = 0;
 };
@@ -179,8 +186,16 @@ class ContentManager {
 
   // Installs an STFS content package from an arbitrary host path.
   // Extracts the package into root_path_/0000000000000000/{title_id}/00000002/{filename}/
-  // and writes a .header file for XAM enumeration.
-  X_RESULT InstallContent(const std::filesystem::path& package_path);
+  // and writes a .header file for XAM enumeration. rr6-nx (2026-11-18): extract_files = false writes the header only;
+  // the package is then read in place (RegisterPackageFile).
+  X_RESULT InstallContent(const std::filesystem::path& package_path, bool extract_files = true);
+
+  // rr6-nx (2026-11-18): a marketplace package (DLC) by its file name, read in place from 'package_file' when the
+  // game opens it, and listed from its header even with no folder of unpacked files. Registered at every start (the
+  // DLC installer); the order of registration is the order listed.
+  void RegisterPackageFile(const std::string& file_name, const std::filesystem::path& package_file);
+  // The package file registered for 'data' (marketplace content only), if it is there; empty otherwise.
+  std::filesystem::path PackageFileOf(const XCONTENT_AGGREGATE_DATA& data);
 
  private:
   std::filesystem::path ResolvePackageRoot(uint64_t xuid, XContentType content_type,
@@ -203,6 +218,8 @@ class ContentManager {
   rex::thread::global_critical_region global_critical_region_;
   std::unordered_map<string::string_key_case, ContentPackage*, string::string_key_case::Hash>
       open_packages_;
+  // rr6-nx (2026-11-18): RegisterPackageFile's packages, by file name, in the order registered.
+  std::vector<std::pair<std::string, std::filesystem::path>> package_files_;
 };
 
 }  // namespace xam

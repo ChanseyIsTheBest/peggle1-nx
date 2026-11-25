@@ -39,9 +39,13 @@ REXCVAR_DEFINE_STRING(input_backend, "sdl", "Input", "Input backend: sdl, xinput
 #endif
 
 REXCVAR_DEFINE_BOOL(guide_button, false, "Input", "Enable guide button pass-through");
-REXCVAR_DEFINE_BOOL(input_rumble, false, "Input",
-                    "Controller vibration (off by default: controllers only get "
-                    "zero vibration). true = the game's vibration");
+// renut-ultimate (2026-11-10, the user's request): on by default. The Switch driver sends the game's two motors as HD
+// rumble (the heavy one on the low band at 160 Hz, the light one on the high band at 320 Hz) to the handheld Joy-Cons,
+// a Joy-Con pair, a single Joy-Con or a Pro Controller, and only when the value changes (one hid IPC then); the PC's
+// SDL and XInput drivers pass it to the pad. Stopped when the process exits.
+REXCVAR_DEFINE_BOOL(input_rumble, true, "Input",
+                    "Controller vibration: the game's own rumble (on by default). false = controllers only get zero "
+                    "vibration");
 namespace rex::input {
 
 namespace {

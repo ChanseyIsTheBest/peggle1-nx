@@ -18,6 +18,7 @@
 #include <string>
 #include <unordered_map>
 
+#include <rex/filesystem.h>
 #include <rex/filesystem/device.h>
 #include <rex/math.h>
 #include <rex/string.h>
@@ -44,6 +45,11 @@ class StfsContainerDevice : public Device {
 
   void Dump(string::StringBuffer* string_buffer) override;
   Entry* ResolvePath(const std::string_view path) override;
+
+  // rr6-nx (2026-11-21): `length` bytes of the package at `offset` of its host file `file` (0 for an STFS package):
+  // through the stand-in when the package P is read through one (peggle1-nx: P.xmop.lz4b, P.xmop or P.lz4b), else
+  // from the host file. The bytes read.
+  size_t ReadAt(size_t file, uint64_t offset, void* out, size_t length);
 
   const std::string& name() const override { return name_; }
   uint32_t attributes() const override { return 0; }
@@ -127,6 +133,10 @@ class StfsContainerDevice : public Device {
 
   std::map<size_t, FILE*> files_;
   size_t files_total_size_;
+  // rr6-nx (2026-11-21): the whole package, from a stand-in (peggle1-nx: P.xmop.lz4b, P.xmop or P.lz4b; null: read
+  // from files_).
+  std::unique_ptr<FileHandle> standin_;
+  uint64_t standin_size_ = 0;
 
   size_t svod_base_offset_;
 

@@ -9,6 +9,7 @@ add_library(rexaudio OBJECT
     xma_context.cpp
     xma_decoder.cpp
     xma_register_file.cpp
+    xmo_opus.cpp  # ultimate base media (2026-11-24): Opus for NAME.xmop frames (culdcept-nx; base port 259)
     # NOP backend (always available)
     nop/nop_audio_system.cpp
 )
@@ -46,3 +47,6 @@ target_link_libraries(rexaudio
 if(NOT REXGLUE_PLATFORM_SWITCH)
     target_link_libraries(rexaudio PUBLIC SDL3::SDL3)
 endif()
+
+# xmo_opus.cpp's libopus (src/filesystem's rexopus: linked in on the Switch, loaded at run time on a PC).
+target_link_libraries(rexaudio PUBLIC rexopus)

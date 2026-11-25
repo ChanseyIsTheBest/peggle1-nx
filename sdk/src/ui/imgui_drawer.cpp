@@ -15,6 +15,7 @@
 #include <map>
 
 #include <rex/assert.h>
+#include <rex/cvar.h>  // blur-nx (2026-11-18): ui_skip_hidden_dialogs
 #include <rex/chrono/clock.h>
 #include <rex/logging.h>
 #include <rex/platform.h>
@@ -194,38 +195,7 @@ void ImGuiDrawer::Initialize() {
   nx::ConfigureNavigation(io);
 #endif
 
-  // Setup the font glyphs.
-  ImFontConfig font_config;
-  font_config.OversampleH = font_config.OversampleV = 1;
-  font_config.PixelSnapH = true;
-  static const ImWchar font_glyph_ranges[] = {
-      0x0020,
-      0x00FF,  // Basic Latin + Latin Supplement
-      0,
-  };
-  io.Fonts->AddFontFromMemoryCompressedBase85TTF(kProggyTinyCompressedDataBase85, 10.0f,
-                                                 &font_config, font_glyph_ranges);
-
-#if REX_PLATFORM_WIN32
-  // TODO(benvanik): jp font on other platforms?
-  // https://github.com/Koruri/kibitaki looks really good, but is 1.5MiB.
-  const char* jp_font_path = "C:\\Windows\\Fonts\\msgothic.ttc";
-  if (std::filesystem::exists(jp_font_path)) {
-    ImFontConfig jp_font_config;
-    jp_font_config.MergeMode = true;
-    jp_font_config.OversampleH = jp_font_config.OversampleV = 1;
-    jp_font_config.PixelSnapH = true;
-    jp_font_config.FontNo = 0;
-    io.Fonts->AddFontFromFileTTF(jp_font_path, 12.0f, &jp_font_config,
-                                 io.Fonts->GetGlyphRangesJapanese());
-  } else {
-    REXLOG_WARN("Unable to load Japanese font; JP characters will be boxes");
-  }
-#endif
-
-  if (font_setup_) {
-    font_setup_(io.Fonts);
-  }
+  AddFontsToAtlas();  // blur-nx (2026-11-18): also RebuildFonts's
 
   auto& style = ImGui::GetStyle();
   ApplyDefaultStyle(style);
@@ -354,6 +324,59 @@ std::optional<ImGuiKey> ImGuiDrawer::VirtualKeyToImGuiKey(VirtualKey vkey) {
   }
 }
 
+void ImGuiDrawer::AddFontsToAtlas() {
+  ImGuiIO& io = GetIO();
+  // Setup the font glyphs.
+  ImFontConfig font_config;
+  font_config.OversampleH = font_config.OversampleV = 1;
+  font_config.PixelSnapH = true;
+  static const ImWchar font_glyph_ranges[] = {
+      0x0020,
+      0x00FF,  // Basic Latin + Latin Supplement
+      0,
+  };
+  io.Fonts->AddFontFromMemoryCompressedBase85TTF(kProggyTinyCompressedDataBase85, 10.0f,
+                                                 &font_config, font_glyph_ranges);
+
+#if REX_PLATFORM_WIN32
+  // TODO(benvanik): jp font on other platforms?
+  // https://github.com/Koruri/kibitaki looks really good, but is 1.5MiB.
+  const char* jp_font_path = "C:\\Windows\\Fonts\\msgothic.ttc";
+  if (std::filesystem::exists(jp_font_path)) {
+    ImFontConfig jp_font_config;
+    jp_font_config.MergeMode = true;
+    jp_font_config.OversampleH = jp_font_config.OversampleV = 1;
+    jp_font_config.PixelSnapH = true;
+    jp_font_config.FontNo = 0;
+    io.Fonts->AddFontFromFileTTF(jp_font_path, 12.0f, &jp_font_config,
+                                 io.Fonts->GetGlyphRangesJapanese());
+  } else {
+    REXLOG_WARN("Unable to load Japanese font; JP characters will be boxes");
+  }
+#endif
+
+  if (font_setup_) {
+    font_setup_(io.Fonts);
+  }
+}
+
+void ImGuiDrawer::RebuildFonts() {
+  font_rebuild_ = false;
+  ImGui::SetCurrentContext(internal_state_);
+  ImGuiIO& io = ImGui::GetIO();
+  if (io.Fonts->Locked) {  // inside a frame: the next Draw does it
+    font_rebuild_ = true;
+    return;
+  }
+  io.Fonts->Clear();
+  AddFontsToAtlas();
+  io.Fonts->TexID = ImTextureID{};
+  if (font_texture_) {
+    retired_font_textures_.emplace_back(std::move(font_texture_), 4);  // the GPU may still read it for a frame or two
+  }
+  // SetupFontTexture (the caller's next step) builds the atlas and uploads it.
+}
+
 void ImGuiDrawer::SetupFontTexture() {
   if (font_texture_ || !immediate_drawer_) {
     return;
@@ -402,12 +425,33 @@ void ImGuiDrawer::SetImmediateDrawer(ImmediateDrawer* new_immediate_drawer) {
   }
 }
 
+// blur-nx (2026-11-18, the Renut host batch's #27).
+REXCVAR_DEFINE_BOOL(ui_skip_hidden_dialogs, true, "UI",
+                    "blur-nx (2026-11-18): no ImGui frame (NewFrame, the dialogs, Render, the immediate drawer's begin "
+                    "and end) while no attached dialog draws anything (ImGuiDialog::WantsFrame): the FPS, log and "
+                    "profiler overlays stay attached while hidden. The Switch's input is still read for the shortcuts' "
+                    "state")
+    .lifecycle(rex::cvar::Lifecycle::kInitOnly);
+
 void ImGuiDrawer::Draw(UIDrawContext& ui_draw_context) {
   // Drawing is initiated by the presenter (SDK mode), or by the app in detached
   // mode (config.graphics == nullptr), where there is no presenter.
   if (!immediate_drawer_) {
     // A drawer target has been attached, but an immediate drawer hasn't yet.
     return;
+  }
+
+  // blur-nx (2026-11-18): font textures a rebuild replaced, freed once they are a few frames old; a requested rebuild
+  // now, between frames (the game menu's font option).
+  for (auto it = retired_font_textures_.begin(); it != retired_font_textures_.end();) {
+    if (--it->second <= 0) {
+      it = retired_font_textures_.erase(it);
+    } else {
+      ++it;
+    }
+  }
+  if (font_rebuild_) {
+    RebuildFonts();
   }
 
   // In detached mode the app's immediate drawer (and the renderer device
@@ -418,6 +462,29 @@ void ImGuiDrawer::Draw(UIDrawContext& ui_draw_context) {
 
   if (dialogs_.empty()) {
     return;
+  }
+
+#if REX_PLATFORM_SWITCH
+  static nx::StateUiEntry state_entry;  // (the Switch block below's, kept here for the skipped frames too)
+#endif
+  // blur-nx (2026-11-18, #27): nothing to draw: no frame (the Switch's buttons read for the shortcuts' state).
+  static const bool skip_hidden = REXCVAR_GET(ui_skip_hidden_dialogs);
+  if (skip_hidden) {
+    bool wanted = false;
+    for (const ImGuiDialog* dialog : dialogs_)
+      wanted = wanted || dialog->WantsFrame();
+    if (!wanted) {
+#if REX_PLATFORM_SWITCH
+      ImGui::SetCurrentContext(internal_state_);
+      const float to_logical = PhysicalToLogical(window_);
+      nx::UiEntry entry;
+      nx::ReadUiEntry(entry, float(window_->GetActualPhysicalWidth()) / 1280.0f * to_logical,
+                      float(window_->GetActualPhysicalHeight()) / 720.0f * to_logical);
+      nx::TrackShortcuts(entry.connected_gamepad ? entry.buttons : 0, state_entry);
+#endif
+      last_frame_time_ticks_ = rex::chrono::Clock::QueryHostTickCount();
+      return;
+    }
   }
 
   ImGui::SetCurrentContext(internal_state_);
@@ -444,7 +511,6 @@ void ImGuiDrawer::Draw(UIDrawContext& ui_draw_context) {
     // events: HID is read here, on the UI thread and before NewFrame. While a menu
     // is open, Draw repeats continuously (see the end). There is a single
     // ImGuiDrawer per process. The touch panel always measures 1280x720.
-    static nx::StateUiEntry state_entry;
     nx::UiEntry entry;
     nx::ReadUiEntry(entry,
                       float(window_->GetActualPhysicalWidth()) / 1280.0f * physical_to_logical,

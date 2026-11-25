@@ -14,6 +14,15 @@
  *                    ('/'-separated, relative to the folder).
  *   Checksums are 64-bit FNV-1a: the index one covers the entries and the paths, the data one every file byte.
  * tools/build_asset_pack.py writes the same files on a PC; PackDevice::Build writes them on the console.
+ *
+ * sa2-nx-ult (2026-11-24, the user: the web installer to build game_root.nxpack and .nxidx; taken into the PopCap
+ * ports the same day, the user: "look at sonic adventure 2 how it has the web installer and index and changes to
+ * work with the pack"): version 3, the same but for a 32-byte DiskEntry (version 2's 24 bytes and a u64 guest size:
+ * the size the game sees). It holds the web installer's stand-ins as they are: NAME.lz4b (LZ4 / ZXC blocks,
+ * rex/filesystem/lz4_blocks.h) for NAME, and here also NAME.xmop and NAME.xmop.lz4b (the game's XMA sounds as
+ * Opus, rex/filesystem/xmo.h), each with NAME's size in the index, so a mount reads no stand-in's header. Version 2
+ * (the installers before) still loads, its entries all plain files. The web installers (lib/nxpack.js) and
+ * PackDevice::Build write version 3.
  */
 
 #pragma once
@@ -26,6 +35,7 @@
 #include <string>
 #include <vector>
 
+#include <rex/filesystem.h>
 #include <rex/filesystem/device.h>
 #include <rex/filesystem/entry.h>
 #include <rex/filesystem/file.h>
@@ -52,11 +62,18 @@ class PackEntry : public Entry {
 
   uint64_t data_offset() const { return data_offset_; }
   PackDevice* pack() const { return pack_; }
+  // sa2-nx-ult (2026-11-24): the stored bytes are NAME.lz4b (LZ4 / ZXC blocks) of NAME; the PopCap ports
+  // (2026-11-24): or NAME.xmop (XMA sounds as Opus), or NAME.xmop.lz4b. Read through OpenLz4Blocks / OpenXmop.
+  bool lz4_blocks() const { return lz4_blocks_; }
+  bool xmop() const { return xmop_; }
 
  private:
   friend class PackDevice;
   PackDevice* pack_ = nullptr;
   uint64_t data_offset_ = 0;
+  uint64_t stored_size_ = 0;  // a stand-in's bytes in the pack (size() is what the game sees)
+  bool lz4_blocks_ = false;
+  bool xmop_ = false;
 };
 
 class PackFile : public File {

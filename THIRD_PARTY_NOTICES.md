@@ -15,6 +15,8 @@ of the folder it is in (see below).
 | Scripts and toolchain file by StevenSND | `tools/find_gaps.py`, `tools/read_before_write.py`, `tools/direct_calls.py`, `tools/fetch_thirdparty.py`, `tools/switch/cmake/switch-devkitA64.cmake`, adapted for this game | GPL-3.0 |
 | [XenosRecomp](https://github.com/hedge-dev/XenosRecomp) by hedge-dev and contributors, with shader tooling and changes by StevenSND | `shaders/XenosRecomp`: Xenos microcode to HLSL translator; `shaders/tools`: the shader library tools | MIT (`shaders/LICENSE.md`) |
 | [mesa-switch](https://github.com/danfromtico/mesa-switch) by danfromtico (with NaGaa95's updates), on top of [Mesa](https://mesa3d.org); the base of the Mesa patch is the work of StevenSND | The Vulkan driver (NVK) and shader compiler (NAK) for Horizon that the Peggle 2 port's 1.0.0 linked; `mesa/` holds the changes and the build scripts. This port's NRO links no Vulkan driver | MIT (Mesa's licenses per file) |
+| [nights-nx](https://github.com/ChanseyIsTheBest/nights-nx)'s movie hooks (`nights_wmv_ffmpeg.cpp`, after [culdcept-nx](https://github.com/ChanseyIsTheBest/culdcept-nx)'s `culdcept_wmv_ffmpeg.cpp`, whose method is sasrt-nx's and tw2de_nx's; banjo-nx's copy on N&B's names) and culdcept-nx's `tools/switch/nxvideo` (the H.265 movie on the Switch's NVDEC), by ChanseyIsTheBest | `app/src/peggle1_wmv_ffmpeg.cpp`, `tools/switch/nxvideo/` | GPL-3.0 |
+| The ultimate base (renut-ultimate) of the ReXGlue Switch ports by ChanseyIsTheBest, from its ports: [blur-nx](https://github.com/ChanseyIsTheBest/blur-nx)'s game menu (ports 177-227, as [rr6-nx](https://github.com/ChanseyIsTheBest/rr6-nx) took it into a tree of this age); rr6-nx's LZ4 / ZXC block reader; [culdcept-nx](https://github.com/ChanseyIsTheBest/culdcept-nx)'s and [sasrt-nx](https://github.com/ChanseyIsTheBest/sasrt-nx)'s XMA sounds as Opus (port 259); [sa2-nx](https://github.com/ChanseyIsTheBest/sa2-nx)'s asset pack version 3; rumble on by default (port 59) with [blur-nx](https://github.com/ChanseyIsTheBest/blur-nx)'s rumble thread (port 148); rr6-nx's downloadable content read in place from its package (port 265) | `app/src/game_menu*`, `sdk/src/filesystem/devices/stfs_container_*.cpp`, `sdk/src/system/xam/content_manager.cpp`, `sdk/src/filesystem/lz4_blocks.cpp`, `xmo.cpp`, `opus_decoder.cpp`, `devices/pack_device.cpp`, `sdk/src/audio/xmo_opus.cpp`, `xma_context.cpp`, the SDK's menu input and drawer | GPL-3.0 (`app/`), BSD-3-Clause (`sdk/`) |
 
 The Horizon (Switch) layer added to `sdk/` is under the SDK's BSD-3-Clause license, and the changes in `shaders/` and
 `mesa/` under the licenses of those projects (MIT), so they can be reused by other ports. The rest of this repository
@@ -40,7 +42,8 @@ submodules into `sdk/thirdparty`.
 
 | Library | License |
 |---|---|
-| [FFmpeg](https://ffmpeg.org) (libavcodec, libavutil: the XMA audio decoder and, from a fork addition, a WMV3 decoder that Mass Effect does not use), from the FFmpeg submodule of ReXGlue SDK v0.10.0 | LGPL-2.1-or-later (configured without GPL parts) |
+| [FFmpeg](https://ffmpeg.org) (libavcodec, libavutil: the XMA audio decoder and, from a fork addition, the WMV3 decoder: the game's movie when it is WMV), from the FFmpeg submodule of ReXGlue SDK v0.10.0 | LGPL-2.1-or-later (configured without GPL parts) |
+| [FFmpeg](https://ffmpeg.org) 7.1 as devkitPro's switch-ffmpeg builds it (`--enable-gpl`), with [averne](https://github.com/averne)'s nvtegra hardware decoding backend (libavcodec, libavutil): linked into the NRO only inside `nxvideo.o` (every symbol local but `nxv_*`), the H.265 movie on NVDEC or its software HEVC decoder | GPL-2.0-or-later |
 | [libmspack](https://www.cabextract.org.uk/libmspack/) by Stuart Caie (LZX decompression) | LGPL-2.1 |
 | [glslang](https://github.com/KhronosGroup/glslang) | BSD-3-Clause and others (see its LICENSE.txt) |
 | [SPIRV-Tools](https://github.com/KhronosGroup/SPIRV-Tools) | Apache-2.0 |
@@ -51,6 +54,10 @@ submodules into `sdk/thirdparty`.
 | [SIMDe](https://github.com/simd-everywhere/simde) | MIT |
 | [toml++](https://github.com/marzer/tomlplusplus) | MIT |
 | [Dear ImGui](https://github.com/ocornut/imgui) | MIT |
+| [LZ4](https://github.com/lz4/lz4) 1.10.0 by Yann Collet (`sdk/thirdparty/lz4`: the game files' LZ4 blocks) | BSD-2-Clause |
+| [ZXC](https://github.com/hellobertrand/zxc) 0.15.0 by Bertrand Lebonnois, with [rapidhash](https://github.com/Nicoshev/rapidhash) by Nicolas De Carli (`sdk/thirdparty/zxc`: the game files' ZXC blocks) | BSD-3-Clause; rapidhash MIT |
+| [libopus](https://opus-codec.org) (devkitPro's switch-libopus: the sounds stored as Opus) | BSD-3-Clause |
+| The game menu's fonts, Dear ImGui's `misc/fonts` embedded in the NRO: ProggyTiny by Tristan Grimmer, Roboto by Christian Robertson, Karla by Jonathan Pinhorn, Cousine by Steve Matteson (the default, "System", is the console's own shared font, read at run time) | ProggyTiny MIT; Roboto Apache-2.0; Cousine and Karla SIL OFL 1.1 |
 | [o1heap](https://github.com/pavel-kirienko/o1heap) | MIT |
 | [utfcpp](https://github.com/nemtrif/utfcpp) | BSL-1.0 |
 | [CLI11](https://github.com/CLIUtils/CLI11) | BSD-3-Clause |

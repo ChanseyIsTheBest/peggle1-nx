@@ -148,7 +148,8 @@ add_compile_options(
     $<$<CONFIG:DEBUG>:-O0>
     $<$<CONFIG:RELEASE>:-O3>
     $<$<CONFIG:RELEASE>:-DNDEBUG>
-    -fno-char8_t
+    # rr6-nx (2026-11-11, via the ultimate base): C++ only; the block codecs (rexblockcodecs: ZXC, LZ4) are C.
+    $<$<COMPILE_LANGUAGE:CXX>:-fno-char8_t>
 )
 
 # Platform detection (supports AMD64 and ARM64)
